@@ -113,7 +113,7 @@ export default function App() {
       </div>
 
       {/* === HEADER === */}
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-black/50 backdrop-blur-xl supports-[backdrop-filter]:bg-black/20">
+      <header className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-black/50 backdrop-blur-xl supports-[backdrop-filter]:bg-black/20 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           
           {/* Logo Area */}
@@ -195,7 +195,7 @@ export default function App() {
       </header>
 
       {/* === MAIN CONTENT === */}
-      <main className="flex-1 container mx-auto px-4 py-8 relative z-10 max-w-7xl mt-2 animate-fade-in">
+      <main className="flex-1 container mx-auto px-4 py-8 relative z-10 max-w-7xl pt-28 animate-fade-in">
         {renderPage()}
       </main>
 

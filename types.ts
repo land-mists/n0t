@@ -27,10 +27,21 @@ export interface CalendarEvent {
   isTaskLinked?: boolean; // If true, this came from ToDo
 }
 
+export interface NewsItem {
+  id: string;
+  title: string;
+  excerpt: string;
+  topic: string;
+  url: string;      // Link to source
+  source: string;   // e.g., "Onet", "BBC"
+  date: string;     // Publication date string
+}
+
 export interface NewsSettings {
   topics: string[];
   length: 'short' | 'medium' | 'long';
   language: string;
+  timeRange: '24h' | 'week' | 'month'; // New filter
 }
 
 export interface WeatherDataPoint {
