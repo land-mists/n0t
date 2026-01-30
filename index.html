@@ -10,7 +10,7 @@
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
 
-    <!-- Tailwind CSS via CDN (kept for simplicity in configuration) -->
+    <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -18,36 +18,31 @@
         theme: {
           extend: {
             colors: {
-              primary: '#06b6d4', // Cyan 500
-              primaryDark: '#0891b2', // Cyan 600
-              secondary: '#3b82f6', // Blue 500
-              dark: '#020617', // Slate 950
-              void: '#000000', // Pure Black
+              space: '#030508',
               glass: 'rgba(255, 255, 255, 0.03)',
-              glassHover: 'rgba(255, 255, 255, 0.08)',
-              glassBorder: 'rgba(255, 255, 255, 0.1)',
             },
             fontFamily: {
               sans: ['Inter', 'sans-serif'],
             },
             boxShadow: {
-              'neon': '0 0 15px rgba(6, 182, 212, 0.3)',
-              'neon-strong': '0 0 30px rgba(6, 182, 212, 0.5)',
-              'glass': '0 4px 30px rgba(0, 0, 0, 0.5)',
-              'inner-light': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.1)',
+              'neon-blue': '0 0 20px rgba(59, 130, 246, 0.3)',
+              'neon-cyan': '0 0 20px rgba(6, 182, 212, 0.3)',
+              'glass-inset': 'inset 0 0 20px rgba(255, 255, 255, 0.02)',
+              'floating': '0 10px 40px -10px rgba(0,0,0,0.5)',
             },
             backgroundImage: {
-              'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-              'glass-gradient': 'linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.01) 100%)',
-              'card-gradient': 'linear-gradient(145deg, rgba(15, 23, 42, 0.6) 0%, rgba(2, 6, 23, 0.8) 100%)',
+              'deep-space': 'radial-gradient(circle at 50% 0%, #1e293b 0%, #020617 40%, #000000 100%)',
+              'card-gradient': 'linear-gradient(145deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%)',
+              'shine': 'linear-gradient(45deg, transparent 25%, rgba(255,255,255,0.05) 50%, transparent 75%)',
             },
             animation: {
-              'fade-in': 'fadeIn 0.4s ease-out forwards',
+              'fade-in': 'fadeIn 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+              'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
             },
             keyframes: {
               fadeIn: {
-                '0%': { opacity: '0', transform: 'translateY(10px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
+                '0%': { opacity: '0', transform: 'translateY(15px) scale(0.98)' },
+                '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
               }
             }
           }
@@ -61,10 +56,20 @@
         font-family: 'Inter', sans-serif;
         background-color: #000000;
       }
+      /* Custom Scrollbar */
       ::-webkit-scrollbar { width: 6px; height: 6px; }
       ::-webkit-scrollbar-track { background: #020617; }
       ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: #06b6d4; }
+      ::-webkit-scrollbar-thumb:hover { background: #0ea5e9; }
+
+      /* Glass Panel Utility */
+      .glass-panel {
+        background: rgba(15, 23, 42, 0.4);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      }
     </style>
   <script type="importmap">
 {
@@ -77,13 +82,14 @@
     "vite": "https://esm.sh/vite@^7.3.1",
     "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
     "react": "https://esm.sh/react@^19.2.4",
-    "react/": "https://esm.sh/react@^19.2.4/"
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "@neondatabase/serverless": "https://esm.sh/@neondatabase/serverless@^1.0.2"
   }
 }
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-black text-slate-200 antialiased selection:bg-cyan-500/30 selection:text-cyan-200 overflow-x-hidden">
+  <body class="bg-black text-slate-200 antialiased selection:bg-cyan-500/30 selection:text-white overflow-x-hidden">
     <div id="root"></div>
     <!-- Vite Entry Point -->
     <script type="module" src="/index.tsx"></script>

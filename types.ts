@@ -7,6 +7,7 @@ export interface Note {
   title: string;
   content: string;
   date: string;
+  color?: string; // Hex code for sticky note color
 }
 
 export interface Task {
@@ -16,6 +17,7 @@ export interface Task {
   dueDate: string; // YYYY-MM-DD
   priority: Priority;
   status: Status;
+  color?: string; // Hex code for sticky note color
 }
 
 export interface CalendarEvent {
@@ -56,4 +58,6 @@ export interface AppSettings {
   googleSheetId: string;
   googleClientId: string; // OAuth Client ID
   weatherLocation: string;
+  notificationsEnabled?: boolean; // New setting
+  notificationTiming?: 'same-day' | '24h' | '48h'; // Configurable timing
 }

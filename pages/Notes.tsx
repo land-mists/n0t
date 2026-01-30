@@ -1,12 +1,21 @@
 import React, { useState } from 'react';
 import { Note } from '../types';
 import { Modal } from '../components/Modal';
-import { Plus, Edit2, Trash2, Search, ArrowUpDown, NotebookPen } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, ArrowUpDown, NotebookPen, Paperclip, Calendar, Palette } from 'lucide-react';
 
 interface NotesProps {
   notes: Note[];
   setNotes: (notes: Note[]) => void;
 }
+
+const NOTE_COLORS = [
+  '#fef08a', // Yellow (Default)
+  '#bae6fd', // Blue
+  '#bbf7d0', // Green
+  '#fbcfe8', // Pink
+  '#e9d5ff', // Purple
+  '#fed7aa', // Orange
+];
 
 const Notes: React.FC<NotesProps> = ({ notes, setNotes }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -23,7 +32,8 @@ const Notes: React.FC<NotesProps> = ({ notes, setNotes }) => {
         id: Math.random().toString(36).substr(2, 9),
         title: currentNote.title || 'Bez tytułu',
         content: currentNote.content || '',
-        date: currentNote.date || new Date().toISOString().split('T')[0]
+        date: currentNote.date || new Date().toISOString().split('T')[0],
+        color: currentNote.color || NOTE_COLORS[0]
       };
       setNotes([...notes, newNote]);
     }
@@ -66,7 +76,7 @@ const Notes: React.FC<NotesProps> = ({ notes, setNotes }) => {
             />
           </div>
           <button 
-            onClick={() => { setCurrentNote({ date: new Date().toISOString().split('T')[0] }); setIsModalOpen(true); }}
+            onClick={() => { setCurrentNote({ date: new Date().toISOString().split('T')[0], color: NOTE_COLORS[0] }); setIsModalOpen(true); }}
             className="flex items-center gap-2 bg-cyan-600 text-white px-5 py-2.5 rounded-xl hover:bg-cyan-500 transition shadow-lg shadow-cyan-900/20 font-medium border border-cyan-400/20"
           >
             <Plus size={20} />
@@ -74,48 +84,88 @@ const Notes: React.FC<NotesProps> = ({ notes, setNotes }) => {
           </button>
         </div>
       </div>
+        
+      {/* Sort Controls (Minimal) */}
+      <div className="flex justify-end gap-4 text-xs text-slate-500">
+         <button onClick={() => { setSortField('date'); setSortAsc(!sortAsc); }} className="hover:text-cyan-400 flex items-center gap-1 transition-colors">
+            Data <ArrowUpDown size={12} />
+         </button>
+         <button onClick={() => { setSortField('title'); setSortAsc(!sortAsc); }} className="hover:text-cyan-400 flex items-center gap-1 transition-colors">
+            Tytuł <ArrowUpDown size={12} />
+         </button>
+      </div>
 
-      <div className="bg-[#050505] rounded-2xl border border-white/10 overflow-hidden shadow-lg">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-white/5 border-b border-white/5 text-xs font-bold uppercase tracking-wider text-slate-400">
-              <tr>
-                <th className="px-6 py-4 cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => { setSortField('date'); setSortAsc(!sortAsc); }}>
-                    <div className="flex items-center gap-1">Data Utworzenia <ArrowUpDown size={14} /></div>
-                </th>
-                <th className="px-6 py-4 cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => { setSortField('title'); setSortAsc(!sortAsc); }}>
-                    <div className="flex items-center gap-1">Tytuł <ArrowUpDown size={14} /></div>
-                </th>
-                <th className="px-6 py-4 cursor-pointer hover:text-cyan-400 transition-colors" onClick={() => { setSortField('content'); setSortAsc(!sortAsc); }}>
-                    <div className="flex items-center gap-1">Treść <ArrowUpDown size={14} /></div>
-                </th>
-                <th className="px-6 py-4 text-right">Opcje</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {filteredNotes.map(note => (
-                <tr key={note.id} className="hover:bg-cyan-500/[0.03] transition-colors group">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-slate-500">{note.date}</td>
-                  <td className="px-6 py-4 font-medium text-slate-200 group-hover:text-cyan-400 transition-colors">{note.title}</td>
-                  <td className="px-6 py-4 text-sm text-slate-400 max-w-xs truncate">{note.content}</td>
-                  <td className="px-6 py-4 text-right">
-                    <button onClick={() => { setCurrentNote(note); setIsModalOpen(true); }} className="text-slate-500 hover:text-cyan-400 mr-3 p-1.5 hover:bg-white/5 rounded-lg transition-all"><Edit2 size={16} /></button>
-                    <button onClick={() => handleDelete(note.id)} className="text-slate-500 hover:text-red-400 p-1.5 hover:bg-white/5 rounded-lg transition-all"><Trash2 size={16} /></button>
-                  </td>
-                </tr>
-              ))}
-              {filteredNotes.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-6 py-16 text-center text-slate-600">Brak danych w rejestrze.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      {/* Sticky Notes Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 pb-10">
+          {filteredNotes.map((note, index) => (
+              <div 
+                key={note.id} 
+                className={`relative text-slate-800 p-6 pt-8 shadow-[0_10px_20px_-5px_rgba(0,0,0,0.3)] transition-all duration-300 hover:scale-105 hover:z-10 group min-h-[240px] flex flex-col justify-between
+                ${index % 2 === 0 ? 'rotate-1 hover:rotate-0' : '-rotate-1 hover:rotate-0'}
+                `}
+                style={{ 
+                    backgroundColor: note.color || '#fef08a',
+                    borderRadius: '2px 2px 2px 25px' 
+                }}
+              >
+                  {/* Paperclip */}
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 drop-shadow-md">
+                     <Paperclip className="text-slate-400 w-10 h-10 transform -rotate-45" strokeWidth={1.5} />
+                  </div>
+                  
+                  {/* Content */}
+                  <div>
+                      <h3 className="font-bold text-lg mb-3 leading-tight border-b border-black/10 pb-2">{note.title}</h3>
+                      <p className="text-sm font-medium text-slate-700 leading-relaxed font-mono whitespace-pre-wrap line-clamp-6">
+                          {note.content}
+                      </p>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="mt-4 pt-3 border-t border-black/10 flex justify-between items-center opacity-70 group-hover:opacity-100 transition-opacity">
+                      <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                          <Calendar size={12} /> {note.date}
+                      </span>
+                      <div className="flex gap-1">
+                          <button onClick={() => { setCurrentNote(note); setIsModalOpen(true); }} className="p-1.5 hover:bg-black/10 rounded transition-colors text-slate-700">
+                              <Edit2 size={16} />
+                          </button>
+                          <button onClick={() => handleDelete(note.id)} className="p-1.5 hover:bg-red-400/50 rounded transition-colors text-slate-700 hover:text-red-900">
+                              <Trash2 size={16} />
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          ))}
+
+          {filteredNotes.length === 0 && (
+            <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-600 border-2 border-dashed border-white/10 rounded-3xl">
+                <NotebookPen size={48} className="mb-4 opacity-20" />
+                <p>Brak notatek. Dodaj nową, aby przypiąć ją do tablicy.</p>
+            </div>
+          )}
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={currentNote.id ? 'Edycja Wpisu' : 'Nowy Wpis'}>
         <div className="space-y-5">
+            {/* Color Picker */}
+            <div>
+                <label className="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-400 flex items-center gap-2">
+                    <Palette size={14} /> Kolor Karteczki
+                </label>
+                <div className="flex gap-3">
+                    {NOTE_COLORS.map(color => (
+                        <button
+                            key={color}
+                            onClick={() => setCurrentNote({ ...currentNote, color })}
+                            className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${currentNote.color === color ? 'border-white shadow-[0_0_10px_white]' : 'border-transparent'}`}
+                            style={{ backgroundColor: color }}
+                            title="Wybierz kolor"
+                        />
+                    ))}
+                </div>
+            </div>
+
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-400">Tytuł</label>
             <input 

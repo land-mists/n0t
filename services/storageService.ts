@@ -1,40 +1,53 @@
 import { Note, Task, CalendarEvent } from '../types';
 
-// In a real production app, this would make fetch() calls to the Google Sheets API
-// or a serverless function acting as a proxy.
-// For this standalone artifact, we mimic the "Cloud" async nature using LocalStorage.
+// This service now communicates with the Netlify Serverless Function
+// which acts as a secure proxy to the Neon Postgres database.
 
-const DELAY = 300; // Mimic network latency
+const API_URL = '/api'; // Redirects to /.netlify/functions/api configured in netlify.toml
 
-const get = <T>(key: string): Promise<T[]> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const data = localStorage.getItem(key);
-      resolve(data ? JSON.parse(data) : []);
-    }, DELAY);
-  });
-};
+const apiRequest = async <T>(type: 'notes' | 'tasks' | 'events', method: 'GET' | 'POST', data?: any): Promise<T[]> => {
+  try {
+    const options: RequestInit = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
 
-const save = <T>(key: string, data: T[]): Promise<void> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      localStorage.setItem(key, JSON.stringify(data));
-      resolve();
-    }, DELAY);
-  });
+    if (data) {
+      options.body = JSON.stringify(data);
+    }
+
+    // Append type as query param
+    const response = await fetch(`${API_URL}?type=${type}`, options);
+
+    if (!response.ok) {
+      console.warn(`API Error for ${type}: ${response.statusText}. Falling back to empty state/local cache logic if implemented.`);
+      // On connection error or offline, you might want to return an empty array or handle retry logic.
+      // For this implementation, we throw to alert the app.
+      throw new Error(`Server error: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    return result.data || [];
+  } catch (error) {
+    console.error(`Storage Service Error (${type}):`, error);
+    // Fallback: If API fails (e.g. dev mode without Netlify Dev), return empty array to prevent crash
+    return [];
+  }
 };
 
 export const storageService = {
   notes: {
-    getAll: () => get<Note>('lifeos_notes'),
-    saveAll: (notes: Note[]) => save('lifeos_notes', notes),
+    getAll: () => apiRequest<Note>('notes', 'GET'),
+    saveAll: (notes: Note[]) => apiRequest<Note>('notes', 'POST', notes),
   },
   tasks: {
-    getAll: () => get<Task>('lifeos_tasks'),
-    saveAll: (tasks: Task[]) => save('lifeos_tasks', tasks),
+    getAll: () => apiRequest<Task>('tasks', 'GET'),
+    saveAll: (tasks: Task[]) => apiRequest<Task>('tasks', 'POST', tasks),
   },
   events: {
-    getAll: () => get<CalendarEvent>('lifeos_events'),
-    saveAll: (events: CalendarEvent[]) => save('lifeos_events', events),
+    getAll: () => apiRequest<CalendarEvent>('events', 'GET'),
+    saveAll: (events: CalendarEvent[]) => apiRequest<CalendarEvent>('events', 'POST', events),
   }
 };

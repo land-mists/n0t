@@ -3,6 +3,7 @@ import { NAV_ITEMS, PAGES, ADMIN_PASS } from './constants.tsx';
 import { Note, Task, CalendarEvent, AppSettings, SyncStatus } from './types';
 import { storageService } from './services/storageService';
 import { googleIntegration } from './services/googleIntegration';
+import { notificationService } from './services/notificationService';
 import { LayoutDashboard, LogOut, Menu, X, Cloud, CloudOff, RefreshCw, AlertTriangle } from 'lucide-react';
 
 // Pages
@@ -34,6 +35,12 @@ export default function App() {
     // Always force dark mode in this theme
     document.documentElement.classList.add('dark');
 
+    // Check for persistent session
+    const storedAuth = localStorage.getItem('lifeos_auth_session');
+    if (storedAuth === 'active') {
+        setIsAuthenticated(true);
+    }
+
     const initData = async () => {
       const [fetchedNotes, fetchedTasks, fetchedEvents] = await Promise.all([
         storageService.notes.getAll(),
@@ -53,8 +60,6 @@ export default function App() {
             setSyncStatus('connecting');
             googleIntegration.init(parsed.googleClientId, (success) => {
                 if(success) {
-                   // Check if we have a valid token stored (simplified check)
-                   // In a real app we'd check token expiration
                    setSyncStatus('disconnected'); // Ready to connect
                 }
             });
@@ -63,6 +68,109 @@ export default function App() {
     };
     initData();
   }, []);
+
+  // Notification Watcher
+  useEffect(() => {
+    if (loading || tasks.length === 0) return;
+
+    const checkNotifications = () => {
+       const savedConfig = localStorage.getItem('lifeos_config');
+       if (!savedConfig) return;
+       
+       const config = JSON.parse(savedConfig) as AppSettings;
+       if (!config.notificationsEnabled) return;
+
+       const timing = config.notificationTiming || '24h';
+       
+       // Load notification log: { taskId: lastNotifiedDateString(YYYY-MM-DD) }
+       // This ensures we notify once per day, but allow re-notification on subsequent days (e.g. tomorrow, then today)
+       const logJson = localStorage.getItem('lifeos_notification_log');
+       const notificationLog: Record<string, string> = logJson ? JSON.parse(logJson) : {};
+       
+       const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+       let logUpdated = false;
+
+       // Helper: Parse YYYY-MM-DD to Local Date Midnight to avoid timezone shifts
+       const parseLocalDate = (dateStr: string) => {
+           const [y, m, d] = dateStr.split('-').map(Number);
+           return new Date(y, m - 1, d);
+       };
+
+       // Get Today at Midnight Local Time
+       const now = new Date();
+       const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+       tasks.forEach(task => {
+          if (task.status === 'Done') return;
+          if (!task.dueDate) return;
+
+          const taskDate = parseLocalDate(task.dueDate);
+          
+          // Calculate difference in Days
+          const diffTime = taskDate.getTime() - todayMidnight.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+
+          let shouldNotify = false;
+          let urgencyMsg = "";
+
+          // Skip past tasks (diffDays < 0)
+          if (diffDays < 0) return;
+
+          if (timing === 'same-day') {
+              if (diffDays === 0) {
+                  shouldNotify = true;
+                  urgencyMsg = "Termin: Dziś!";
+              }
+          } 
+          else if (timing === '24h') {
+              if (diffDays === 0) {
+                  shouldNotify = true;
+                  urgencyMsg = "Termin: Dziś!";
+              } else if (diffDays === 1) {
+                  shouldNotify = true;
+                  urgencyMsg = "Termin: Jutro";
+              }
+          } 
+          else if (timing === '48h') {
+              if (diffDays === 0) {
+                  shouldNotify = true;
+                  urgencyMsg = "Termin: Dziś!";
+              } else if (diffDays === 1) {
+                  shouldNotify = true;
+                  urgencyMsg = "Termin: Jutro";
+              } else if (diffDays === 2) {
+                  shouldNotify = true;
+                  urgencyMsg = `Termin: ${task.dueDate}`;
+              }
+          }
+
+          // Check if already notified TODAY for this task
+          if (shouldNotify) {
+              const lastNotifiedDate = notificationLog[task.id];
+              
+              if (lastNotifiedDate !== todayStr) {
+                  notificationService.send(`🔔 ${task.title}`, {
+                     body: `${urgencyMsg}\nPriorytet: ${task.priority}`,
+                     tag: `${task.id}-${todayStr}`, // Unique tag per day
+                     requireInteraction: true 
+                  });
+                  
+                  notificationLog[task.id] = todayStr;
+                  logUpdated = true;
+              }
+          }
+       });
+
+       if (logUpdated) {
+           localStorage.setItem('lifeos_notification_log', JSON.stringify(notificationLog));
+       }
+    };
+
+    checkNotifications();
+    const interval = setInterval(checkNotifications, 60000);
+    return () => clearInterval(interval);
+
+  }, [tasks, loading]);
 
   const getCombinedEvents = () => {
     const taskEvents: CalendarEvent[] = tasks
@@ -79,30 +187,58 @@ export default function App() {
     return [...events, ...taskEvents];
   };
 
-  const handleLogin = (pass: string) => {
+  const handleLogin = (pass: string): boolean => {
     if (pass === ADMIN_PASS) {
       setIsAuthenticated(true);
+      localStorage.setItem('lifeos_auth_session', 'active'); // Persist session
+      return true;
     } else {
-      alert("Nieprawidłowe hasło");
+      return false;
     }
+  };
+  
+  const handleLogout = () => {
+      setIsAuthenticated(false);
+      localStorage.removeItem('lifeos_auth_session');
+      setCurrentPage(PAGES.DASHBOARD);
   };
 
   // Status Indicator Component
   const ConnectionIndicator = () => {
     const statusConfig = {
-      disconnected: { icon: <CloudOff size={14} />, text: 'LOCAL ONLY', color: 'text-slate-500', bg: 'bg-slate-500/10 border-slate-500/20' },
-      connecting: { icon: <RefreshCw size={14} className="animate-spin" />, text: 'CONNECTING...', color: 'text-yellow-500', bg: 'bg-yellow-500/10 border-yellow-500/20' },
-      connected: { icon: <Cloud size={14} />, text: 'SYNC ACTIVE', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
-      syncing: { icon: <RefreshCw size={14} className="animate-spin" />, text: 'SYNCING...', color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20' },
-      error: { icon: <AlertTriangle size={14} />, text: 'SYNC ERROR', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20' },
+      disconnected: { 
+        icon: <CloudOff size={14} />, 
+        text: 'LOCAL', 
+        className: 'text-slate-400 bg-slate-900/50 border-white/5' 
+      },
+      connecting: { 
+        icon: <RefreshCw size={14} className="animate-spin" />, 
+        text: 'CONNECTING...', 
+        className: 'text-cyan-400 bg-cyan-900/20 border-cyan-500/20 shadow-[0_0_15px_rgba(34,211,238,0.2)] animate-pulse' 
+      },
+      connected: { 
+        icon: <Cloud size={14} />, 
+        text: 'SYNC ON', 
+        className: 'text-emerald-400 bg-emerald-900/20 border-emerald-500/20 shadow-[0_0_10px_rgba(52,211,153,0.2)]' 
+      },
+      syncing: { 
+        icon: <RefreshCw size={14} className="animate-spin" />, 
+        text: 'SYNCING...', 
+        className: 'text-blue-400 bg-blue-900/20 border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.2)]' 
+      },
+      error: { 
+        icon: <AlertTriangle size={14} />, 
+        text: 'ERROR', 
+        className: 'text-red-400 bg-red-900/20 border-red-500/20' 
+      },
     };
 
     const current = statusConfig[syncStatus];
 
     return (
-      <div className={`hidden md:flex items-center gap-2 px-3 py-1 rounded-full border ${current.bg} transition-all`}>
-        <span className={current.color}>{current.icon}</span>
-        <span className={`text-[9px] font-bold tracking-widest ${current.color}`}>{current.text}</span>
+      <div className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all duration-500 ease-in-out backdrop-blur-md ${current.className}`}>
+        <span>{current.icon}</span>
+        <span className="text-[9px] font-bold tracking-widest">{current.text}</span>
       </div>
     );
   };
@@ -112,7 +248,12 @@ export default function App() {
   }
 
   const renderPage = () => {
-    if (loading) return <div className="flex h-screen items-center justify-center text-primary font-mono text-sm tracking-widest">SYSTEM LOADING...</div>;
+    if (loading) return (
+      <div className="flex flex-col h-screen items-center justify-center gap-4">
+        <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin shadow-neon-cyan"></div>
+        <div className="text-cyan-500 font-mono text-xs tracking-[0.3em] animate-pulse">SYSTEM LOADING...</div>
+      </div>
+    );
 
     switch (currentPage) {
       case PAGES.DASHBOARD:
@@ -135,71 +276,83 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col text-slate-200 font-sans selection:bg-cyan-500/30 relative overflow-x-hidden bg-black">
+    <div className="min-h-screen flex flex-col text-slate-200 font-sans relative overflow-x-hidden bg-black selection:bg-cyan-500/30 selection:text-white">
       
-      {/* === STATIC SPATIAL BACKGROUND === */}
+      {/* === DEEP SPACE BACKGROUND === */}
       <div className="fixed inset-0 z-0 pointer-events-none">
-         <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-[#020617] to-black"></div>
-         <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-blue-900/20 rounded-full blur-[100px]"></div>
-         <div className="absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] bg-cyan-900/20 rounded-full blur-[100px]"></div>
-         <div className="absolute top-[20%] left-[30%] w-[30vw] h-[30vw] bg-indigo-900/10 rounded-full blur-[80px]"></div>
-         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03]"></div>
-         <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
+         {/* Base Radial Gradient */}
+         <div className="absolute inset-0 bg-deep-space"></div>
+         
+         {/* Top Spotlight */}
+         <div className="absolute top-[-20%] left-[30%] w-[50vw] h-[50vw] bg-blue-600/10 rounded-full blur-[180px] mix-blend-screen"></div>
+         {/* Bottom Spotlight */}
+         <div className="absolute bottom-[-20%] right-[10%] w-[60vw] h-[60vw] bg-cyan-600/10 rounded-full blur-[150px] mix-blend-screen"></div>
+         
+         {/* Noise Texture */}
+         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.04]"></div>
       </div>
 
       {/* === HEADER === */}
-      <header className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-black/50 backdrop-blur-xl supports-[backdrop-filter]:bg-black/20 transition-all duration-300">
+      <header className="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.08] bg-black/40 backdrop-blur-2xl transition-all duration-300 shadow-lg shadow-black/20">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           
           {/* Logo Area */}
           <div className="flex items-center gap-4">
-            <div className="bg-gradient-to-br from-cyan-500 to-blue-600 p-0.5 rounded-xl shadow-neon">
-               <div className="bg-black p-2.5 rounded-[10px] flex items-center justify-center">
-                 <LayoutDashboard size={20} className="text-cyan-400" />
+            <div className="bg-gradient-to-br from-cyan-500/20 to-blue-600/20 p-[1px] rounded-xl shadow-neon-cyan group cursor-pointer hover:scale-105 transition-transform">
+               <div className="bg-black/80 backdrop-blur-xl p-2.5 rounded-[10px] flex items-center justify-center border border-white/10 group-hover:border-cyan-500/50 transition-colors">
+                 <LayoutDashboard size={20} className="text-cyan-400 group-hover:text-cyan-300 transition-colors" />
                </div>
             </div>
             <div>
-                <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-                  LifeOS <span className="text-[10px] font-mono text-cyan-400 border border-cyan-500/30 px-1.5 py-0.5 rounded bg-cyan-500/10">v3.0</span>
+                <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-slate-400 tracking-tight flex items-center gap-3">
+                  LifeOS <span className="text-[9px] font-mono text-cyan-400 border border-cyan-500/30 px-1.5 py-0.5 rounded bg-cyan-500/5 shadow-[0_0_10px_rgba(6,182,212,0.2)]">PRO</span>
                   <ConnectionIndicator />
                 </h1>
-                <p className="text-[10px] text-slate-500 font-bold tracking-[0.2em] uppercase">Personal Core</p>
+                <p className="text-[9px] text-slate-500 font-bold tracking-[0.3em] uppercase">Personal Command Center</p>
             </div>
           </div>
 
           {/* Desktop Nav */}
-          <nav className="hidden md:flex items-center gap-1 bg-white/5 p-1.5 rounded-full border border-white/5">
+          <nav className="hidden md:flex items-center gap-1.5 bg-white/[0.03] p-1.5 rounded-full border border-white/[0.08] backdrop-blur-xl shadow-inner">
             {NAV_ITEMS.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setCurrentPage(item.id)}
-                className={`flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+                className={`relative overflow-hidden flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all duration-300 group ${
                   currentPage === item.id
-                    ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-cyan-500/20'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    ? 'text-white shadow-neon-blue border border-blue-500/30'
+                    : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
                 }`}
               >
-                {React.cloneElement(item.icon as React.ReactElement, { 
-                    size: 16, 
-                    className: currentPage === item.id ? 'text-white' : 'opacity-70' 
-                })}
-                <span>{item.label}</span>
+                {/* Active Background Gradient */}
+                {currentPage === item.id && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-blue-600/40 to-cyan-600/40 backdrop-blur-sm"></div>
+                )}
+                
+                {/* Content */}
+                <div className="relative z-10 flex items-center gap-2">
+                    {React.cloneElement(item.icon as React.ReactElement, { 
+                        size: 16, 
+                        className: currentPage === item.id ? 'text-white drop-shadow-[0_0_5px_rgba(255,255,255,0.5)]' : 'group-hover:text-cyan-400 transition-colors' 
+                    })}
+                    <span className="tracking-wide">{item.label}</span>
+                </div>
               </button>
             ))}
           </nav>
 
           {/* Actions */}
           <div className="flex items-center gap-3">
-            <div className="h-8 w-px bg-white/10 mx-1 hidden md:block"></div>
+            <div className="h-8 w-px bg-gradient-to-b from-transparent via-white/10 to-transparent mx-1 hidden md:block"></div>
             <button
-              onClick={() => setIsAuthenticated(false)}
-              className="p-2.5 rounded-xl hover:bg-red-500/10 text-slate-400 hover:text-red-400 transition-colors border border-transparent hover:border-red-500/20"
+              onClick={handleLogout}
+              className="p-2.5 rounded-xl hover:bg-red-500/10 text-slate-400 hover:text-red-400 transition-colors border border-transparent hover:border-red-500/20 hover:shadow-[0_0_15px_rgba(239,68,68,0.2)]"
               title="Wyloguj"
             >
               <LogOut size={20} />
             </button>
             <button 
-              className="md:hidden p-2.5 text-slate-300 bg-white/5 rounded-xl border border-white/10"
+              className="md:hidden p-2.5 text-slate-300 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             >
                {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -209,7 +362,7 @@ export default function App() {
         
         {/* Mobile Menu */}
         {isMobileMenuOpen && (
-          <div className="md:hidden bg-[#0a0a0a]/95 backdrop-blur-xl border-b border-white/10 p-4 absolute w-full left-0 top-full z-50">
+          <div className="md:hidden bg-slate-950/90 backdrop-blur-2xl border-b border-white/10 p-4 absolute w-full left-0 top-full z-50 shadow-2xl">
              <div className="grid grid-cols-2 gap-3">
                {NAV_ITEMS.map((item) => (
                   <button
@@ -217,8 +370,8 @@ export default function App() {
                     onClick={() => { setCurrentPage(item.id); setIsMobileMenuOpen(false); }}
                     className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all ${
                       currentPage === item.id 
-                      ? 'border-cyan-500/50 bg-cyan-900/20 text-cyan-400' 
-                      : 'border-white/5 bg-white/5 text-slate-400'
+                      ? 'border-cyan-500/30 bg-cyan-900/20 text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.1)]' 
+                      : 'border-white/5 bg-white/[0.02] text-slate-400 hover:bg-white/[0.05]'
                     }`}
                   >
                     {React.cloneElement(item.icon as React.ReactElement, { className: 'mb-2' })}
@@ -236,14 +389,14 @@ export default function App() {
       </main>
 
       {/* === FOOTER === */}
-      <footer className="border-t border-white/5 py-8 mt-12 bg-black/40">
+      <footer className="border-t border-white/[0.05] py-8 mt-12 bg-black/20 backdrop-blur-lg">
         <div className="container mx-auto px-4 text-center">
-          <p className="text-sm font-medium text-slate-500 tracking-wide">
+          <p className="text-sm font-medium text-slate-600 tracking-wide">
             Dario Elzenberg © 2026
           </p>
           <div className="flex justify-center gap-2 mt-2 items-center opacity-50 hover:opacity-100 transition-opacity">
-             <span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
-             <p className="text-[10px] font-mono text-cyan-500 uppercase">System Stable</p>
+             <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 shadow-[0_0_10px_cyan]"></span>
+             <p className="text-[10px] font-mono text-cyan-500 uppercase tracking-widest">System Active</p>
           </div>
         </div>
       </footer>
