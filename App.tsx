@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { NAV_ITEMS, PAGES, ADMIN_PASS } from './constants.tsx';
-import { Note, Task, CalendarEvent } from './types';
+import { Note, Task, CalendarEvent, AppSettings, SyncStatus } from './types';
 import { storageService } from './services/storageService';
-import { LayoutDashboard, LogOut, Menu, X, Sparkles } from 'lucide-react';
+import { googleIntegration } from './services/googleIntegration';
+import { LayoutDashboard, LogOut, Menu, X, Cloud, CloudOff, RefreshCw, AlertTriangle } from 'lucide-react';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -24,6 +25,9 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Connection Status
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('disconnected');
 
   // Initialization
   useEffect(() => {
@@ -40,6 +44,22 @@ export default function App() {
       setTasks(fetchedTasks);
       setEvents(fetchedEvents);
       setLoading(false);
+
+      // Attempt Google Init if config exists
+      const savedConfig = localStorage.getItem('lifeos_config');
+      if (savedConfig) {
+        const parsed = JSON.parse(savedConfig) as AppSettings;
+        if (parsed.googleClientId) {
+            setSyncStatus('connecting');
+            googleIntegration.init(parsed.googleClientId, (success) => {
+                if(success) {
+                   // Check if we have a valid token stored (simplified check)
+                   // In a real app we'd check token expiration
+                   setSyncStatus('disconnected'); // Ready to connect
+                }
+            });
+        }
+      }
     };
     initData();
   }, []);
@@ -67,6 +87,26 @@ export default function App() {
     }
   };
 
+  // Status Indicator Component
+  const ConnectionIndicator = () => {
+    const statusConfig = {
+      disconnected: { icon: <CloudOff size={14} />, text: 'LOCAL ONLY', color: 'text-slate-500', bg: 'bg-slate-500/10 border-slate-500/20' },
+      connecting: { icon: <RefreshCw size={14} className="animate-spin" />, text: 'CONNECTING...', color: 'text-yellow-500', bg: 'bg-yellow-500/10 border-yellow-500/20' },
+      connected: { icon: <Cloud size={14} />, text: 'SYNC ACTIVE', color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+      syncing: { icon: <RefreshCw size={14} className="animate-spin" />, text: 'SYNCING...', color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20' },
+      error: { icon: <AlertTriangle size={14} />, text: 'SYNC ERROR', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20' },
+    };
+
+    const current = statusConfig[syncStatus];
+
+    return (
+      <div className={`hidden md:flex items-center gap-2 px-3 py-1 rounded-full border ${current.bg} transition-all`}>
+        <span className={current.color}>{current.icon}</span>
+        <span className={`text-[9px] font-bold tracking-widest ${current.color}`}>{current.text}</span>
+      </div>
+    );
+  };
+
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} isDarkMode={true} toggleTheme={() => {}} />;
   }
@@ -88,7 +128,7 @@ export default function App() {
       case PAGES.CALENDAR:
         return <CalendarPage events={events} setEvents={(e) => { setEvents(e); storageService.events.saveAll(e); }} combinedEvents={getCombinedEvents()} />;
       case PAGES.SETTINGS:
-        return <SettingsPage />;
+        return <SettingsPage syncStatus={syncStatus} setSyncStatus={setSyncStatus} />;
       default:
         return <Dashboard notesCount={notes.length} tasks={tasks} events={events} onNavigate={setCurrentPage} />;
     }
@@ -99,15 +139,10 @@ export default function App() {
       
       {/* === STATIC SPATIAL BACKGROUND === */}
       <div className="fixed inset-0 z-0 pointer-events-none">
-         {/* Main Gradient Field */}
          <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-[#020617] to-black"></div>
-         
-         {/* Static Color Spots for Depth */}
          <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-blue-900/20 rounded-full blur-[100px]"></div>
          <div className="absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] bg-cyan-900/20 rounded-full blur-[100px]"></div>
          <div className="absolute top-[20%] left-[30%] w-[30vw] h-[30vw] bg-indigo-900/10 rounded-full blur-[80px]"></div>
-
-         {/* Tech Mesh Overlay */}
          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03]"></div>
          <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
       </div>
@@ -126,6 +161,7 @@ export default function App() {
             <div>
                 <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
                   LifeOS <span className="text-[10px] font-mono text-cyan-400 border border-cyan-500/30 px-1.5 py-0.5 rounded bg-cyan-500/10">v3.0</span>
+                  <ConnectionIndicator />
                 </h1>
                 <p className="text-[10px] text-slate-500 font-bold tracking-[0.2em] uppercase">Personal Core</p>
             </div>

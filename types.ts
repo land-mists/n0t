@@ -1,5 +1,6 @@
 export type Priority = 'Low' | 'Medium' | 'High';
 export type Status = 'To Do' | 'In Progress' | 'Done';
+export type SyncStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'syncing';
 
 export interface Note {
   id: string;
@@ -53,6 +54,6 @@ export interface WeatherDataPoint {
 
 export interface AppSettings {
   googleSheetId: string;
-  googleClientId: string;
+  googleClientId: string; // OAuth Client ID
   weatherLocation: string;
 }

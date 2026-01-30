@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { AppSettings } from '../types';
-import { Save, Shield, Database, Cloud, Key, CheckCircle2, AlertTriangle, RefreshCcw, Settings } from 'lucide-react';
+import { AppSettings, SyncStatus } from '../types';
+import { googleIntegration } from '../services/googleIntegration';
+import { Save, Shield, Database, Cloud, Key, CheckCircle2, AlertTriangle, RefreshCcw, Settings, Link2, Unlink } from 'lucide-react';
 
-const SettingsPage: React.FC = () => {
+interface SettingsProps {
+  syncStatus: SyncStatus;
+  setSyncStatus: (status: SyncStatus) => void;
+}
+
+const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) => {
   const [config, setConfig] = useState<AppSettings>({
     googleSheetId: '',
     googleClientId: '',
@@ -23,8 +29,36 @@ const SettingsPage: React.FC = () => {
 
   const handleSave = () => {
     localStorage.setItem('lifeos_config', JSON.stringify(config));
+    
+    // Re-initialize Google if Client ID changed
+    if (config.googleClientId) {
+       googleIntegration.init(config.googleClientId, (success) => {
+         if(success && syncStatus === 'disconnected') {
+           // Ready to connect
+         }
+       });
+    }
+
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
+  };
+
+  const handleGoogleConnect = () => {
+    setSyncStatus('connecting');
+    googleIntegration.login(
+      () => {
+        setSyncStatus('connected');
+      },
+      (error) => {
+        console.error(error);
+        setSyncStatus('error');
+      }
+    );
+  };
+
+  const handleGoogleDisconnect = () => {
+    googleIntegration.logout();
+    setSyncStatus('disconnected');
   };
 
   const handleResetData = () => {
@@ -32,6 +66,7 @@ const SettingsPage: React.FC = () => {
       localStorage.removeItem('lifeos_notes');
       localStorage.removeItem('lifeos_tasks');
       localStorage.removeItem('lifeos_events');
+      localStorage.removeItem('lifeos_config');
       window.location.reload();
     }
   };
@@ -75,26 +110,75 @@ const SettingsPage: React.FC = () => {
               </div>
             </div>
           </div>
-          <div className="mt-6 p-4 bg-black rounded-xl border border-white/5 text-xs text-slate-500">
-             <p>Ze względów bezpieczeństwa, klucz API Gemini jest ładowany wyłącznie ze zmiennych środowiskowych serwera/kontenera i nie może być edytowany w przeglądarce.</p>
-          </div>
         </div>
 
         {/* Google Cloud / Sheets Config */}
         <div className="bg-[#050505] rounded-2xl border border-white/10 p-8 relative overflow-hidden">
            <div className="absolute top-0 right-0 w-32 h-32 bg-green-900/10 rounded-bl-full"></div>
            
-           <div className="flex gap-4 relative z-10 mb-6">
-              <div className="p-3 bg-green-900/20 rounded-xl text-green-400 h-fit border border-green-500/20">
-                <Cloud size={24} />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-white">Google Workspace</h3>
-                <p className="text-sm text-slate-400 mt-1">Konfiguracja połączenia z Arkuszami Google i Kalendarzem.</p>
-              </div>
+           <div className="flex justify-between items-start relative z-10 mb-6">
+               <div className="flex gap-4">
+                  <div className="p-3 bg-green-900/20 rounded-xl text-green-400 h-fit border border-green-500/20">
+                    <Cloud size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Google Workspace</h3>
+                    <p className="text-sm text-slate-400 mt-1">Konfiguracja połączenia z Arkuszami Google i Kalendarzem.</p>
+                    
+                    {/* Status Badge */}
+                    <div className="mt-3 flex items-center gap-2">
+                        {syncStatus === 'connected' ? (
+                             <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 bg-emerald-900/20 px-2 py-1 rounded border border-emerald-500/30">
+                                <Link2 size={12} /> POŁĄCZONO Z KONTEM
+                             </span>
+                        ) : syncStatus === 'error' ? (
+                             <span className="flex items-center gap-1.5 text-xs font-bold text-red-400 bg-red-900/20 px-2 py-1 rounded border border-red-500/30">
+                                <AlertTriangle size={12} /> BŁĄD AUTORYZACJI
+                             </span>
+                        ) : (
+                             <span className="flex items-center gap-1.5 text-xs font-bold text-slate-500 bg-slate-900/50 px-2 py-1 rounded border border-slate-700">
+                                <Unlink size={12} /> NIEPOŁĄCZONY
+                             </span>
+                        )}
+                    </div>
+                  </div>
+               </div>
+               
+               {/* Connect Buttons */}
+               <div className="flex flex-col gap-2">
+                   {syncStatus === 'connected' ? (
+                       <button onClick={handleGoogleDisconnect} className="px-4 py-2 text-sm text-red-400 hover:text-white border border-red-900/30 hover:bg-red-900/20 rounded-lg transition-colors font-medium">
+                           Rozłącz Konto
+                       </button>
+                   ) : (
+                       <button 
+                           onClick={handleGoogleConnect} 
+                           disabled={!config.googleClientId}
+                           className="px-4 py-2 text-sm bg-white text-black hover:bg-slate-200 rounded-lg transition-colors font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                       >
+                           <img src="https://www.google.com/favicon.ico" alt="G" className="w-4 h-4" />
+                           Zaloguj przez Google
+                       </button>
+                   )}
+               </div>
            </div>
 
-           <div className="space-y-5">
+           <div className="space-y-5 border-t border-white/5 pt-6">
+              <div>
+                <label className="block text-sm font-bold text-slate-300 mb-2">Identyfikator Klienta (OAuth 2.0 Client ID)</label>
+                <div className="relative">
+                  <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                  <input 
+                    type="text" 
+                    value={config.googleClientId}
+                    onChange={(e) => setConfig({...config, googleClientId: e.target.value})}
+                    placeholder="np. 123456789-abc.apps.googleusercontent.com"
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/10 bg-black focus:ring-1 focus:ring-cyan-500 outline-none text-white font-mono text-sm transition-all placeholder:text-slate-700"
+                  />
+                </div>
+                <p className="text-xs text-slate-500 mt-1">Wymagane do logowania. Utwórz w <a href="https://console.cloud.google.com/apis/credentials" target="_blank" className="text-cyan-500 hover:underline">Google Cloud Console</a>.</p>
+              </div>
+
               <div>
                 <label className="block text-sm font-bold text-slate-300 mb-2">ID Arkusza Google (Spreadsheet ID)</label>
                 <div className="relative">
@@ -107,22 +191,7 @@ const SettingsPage: React.FC = () => {
                     className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/10 bg-black focus:ring-1 focus:ring-cyan-500 outline-none text-white font-mono text-sm transition-all placeholder:text-slate-700"
                   />
                 </div>
-                <p className="text-xs text-slate-500 mt-1">ID arkusza, w którym przechowywane będą zadania i notatki.</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-slate-300 mb-2">Identyfikator Klienta (Client ID)</label>
-                <div className="relative">
-                  <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                  <input 
-                    type="text" 
-                    value={config.googleClientId}
-                    onChange={(e) => setConfig({...config, googleClientId: e.target.value})}
-                    placeholder="np. 123456789-abc..."
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/10 bg-black focus:ring-1 focus:ring-cyan-500 outline-none text-white font-mono text-sm transition-all placeholder:text-slate-700"
-                  />
-                </div>
-                <p className="text-xs text-slate-500 mt-1">Client ID OAuth 2.0 z Google Cloud Console.</p>
+                <p className="text-xs text-slate-500 mt-1">ID arkusza z paska adresu URL, w którym przechowywane będą dane.</p>
               </div>
            </div>
         </div>
