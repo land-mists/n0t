@@ -51,8 +51,10 @@ const Todo: React.FC<TodoProps> = ({ tasks, setTasks }) => {
   const filteredTasks = tasks.filter(t => statusFilter === 'All' || t.status === statusFilter);
 
   const sortedTasks = [...filteredTasks].sort((a, b) => {
-    if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.dir === 'asc' ? -1 : 1;
-    if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.dir === 'asc' ? 1 : -1;
+    const valA = a[sortConfig.key] || '';
+    const valB = b[sortConfig.key] || '';
+    if (valA < valB) return sortConfig.dir === 'asc' ? -1 : 1;
+    if (valA > valB) return sortConfig.dir === 'asc' ? 1 : -1;
     return 0;
   });
 

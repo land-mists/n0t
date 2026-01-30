@@ -50,8 +50,10 @@ const Notes: React.FC<NotesProps> = ({ notes, setNotes }) => {
   const filteredNotes = notes
     .filter(n => n.title.toLowerCase().includes(searchTerm.toLowerCase()) || n.content.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => {
-      if (a[sortField] < b[sortField]) return sortAsc ? -1 : 1;
-      if (a[sortField] > b[sortField]) return sortAsc ? 1 : -1;
+      const valA = a[sortField] || '';
+      const valB = b[sortField] || '';
+      if (valA < valB) return sortAsc ? -1 : 1;
+      if (valA > valB) return sortAsc ? 1 : -1;
       return 0;
     });
 
