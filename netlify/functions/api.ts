@@ -1,10 +1,16 @@
 import { neon } from '@neondatabase/serverless';
 
 // Helper to get DB client
-const getSql = () => {
-  const dbUrl = process.env.DATABASE_URL;
+// Now checks headers for a client-provided URL first
+const getSql = (headers: any) => {
+  // Headers are usually lowercased by Netlify/AWS
+  const headerUrl = headers['x-database-url'] || headers['X-Database-Url'];
+  const envUrl = process.env.DATABASE_URL;
+  
+  const dbUrl = headerUrl || envUrl;
+
   if (!dbUrl) {
-    throw new Error('DATABASE_URL is not set');
+    throw new Error('DATABASE_URL is not set (Check Settings or .env)');
   }
   return neon(dbUrl);
 };
@@ -16,7 +22,7 @@ export const handler = async (event: any, context: any) => {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type'
+    'Access-Control-Allow-Headers': 'Content-Type, X-Database-Url'
   };
 
   // Handle preflight options request
@@ -31,8 +37,8 @@ export const handler = async (event: any, context: any) => {
   try {
     const type = event.queryStringParameters?.type;
     
-    // Connect to Neon
-    const sql = getSql();
+    // Connect to Neon using header or env
+    const sql = getSql(event.headers || {});
 
     if (!['notes', 'tasks', 'events'].includes(type || '')) {
       return {

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AppSettings, SyncStatus } from '../types';
 import { notificationService } from '../services/notificationService';
-import { Save, Key, CheckCircle2, AlertTriangle, RefreshCcw, Settings, Bell, BellRing, Clock, ShieldAlert } from 'lucide-react';
+import { storageService } from '../services/storageService';
+import { Save, Key, CheckCircle2, AlertTriangle, RefreshCcw, Settings, Bell, BellRing, Clock, ShieldAlert, Database, Eye, EyeOff, Wifi } from 'lucide-react';
 
 interface SettingsProps {
   syncStatus: SyncStatus;
@@ -14,12 +15,15 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
     googleClientId: '',
     weatherLocation: 'Skierniewice, PL',
     notificationsEnabled: false,
-    notificationTiming: '24h'
+    notificationTiming: '24h',
+    databaseUrl: ''
   });
   
   const [originalConfig, setOriginalConfig] = useState<string>('');
   const [isSaved, setIsSaved] = useState(false);
   const [permissionState, setPermissionState] = useState(notificationService.getPermissionState());
+  const [showDbUrl, setShowDbUrl] = useState(false);
+  const [dbConnectionCheck, setDbConnectionCheck] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
 
   const hasApiKey = !!process.env.API_KEY;
   const hasUnsavedChanges = JSON.stringify(config) !== originalConfig;
@@ -33,7 +37,8 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
             ...parsed, 
             notificationsEnabled: parsed.notificationsEnabled === true,
             notificationTiming: parsed.notificationTiming || '24h',
-            weatherLocation: parsed.weatherLocation || 'Skierniewice, PL'
+            weatherLocation: parsed.weatherLocation || 'Skierniewice, PL',
+            databaseUrl: parsed.databaseUrl || ''
         };
         setConfig(loadedConfig);
         setOriginalConfig(JSON.stringify(loadedConfig));
@@ -55,6 +60,9 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
     if (config.notificationsEnabled) {
         notificationService.send("Ustawienia Zapisane", { body: "System powiadomień jest aktywny." });
     }
+    
+    // Reset DB check status on save
+    setDbConnectionCheck('idle');
 
     setTimeout(() => setIsSaved(false), 2000);
   };
@@ -105,6 +113,33 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
     });
   };
 
+  const testDbConnection = async () => {
+    // Save temporarily to storage service knows about it, or update service to read from state?
+    // The service reads from localStorage, so we must save first or pass it.
+    // Ideally, we just check if the endpoint responds.
+    setDbConnectionCheck('checking');
+    
+    // We need to save to LS for the storage service to pick it up immediately during this test
+    const tempConfig = { ...config };
+    localStorage.setItem('lifeos_config', JSON.stringify(tempConfig));
+
+    try {
+        const res = await storageService.notes.getAll();
+        // If we get an array (even empty), connection is good.
+        if (Array.isArray(res)) {
+            setDbConnectionCheck('success');
+            setSyncStatus('connected');
+        } else {
+            setDbConnectionCheck('error');
+            setSyncStatus('error');
+        }
+    } catch (e) {
+        console.error(e);
+        setDbConnectionCheck('error');
+        setSyncStatus('error');
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-4xl mx-auto pb-10 animate-fade-in">
       <div>
@@ -115,6 +150,73 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
+
+        {/* Cloud Database Config */}
+        <div className="glass-panel rounded-2xl p-8 relative overflow-hidden group">
+           <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 rounded-bl-full pointer-events-none transition-transform group-hover:scale-105"></div>
+           
+           <div className="flex flex-col gap-6 relative z-10">
+               <div className="flex items-start gap-4">
+                  <div className="p-3 bg-cyan-900/20 rounded-xl text-cyan-400 h-fit border border-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.2)]">
+                    <Database size={24} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <h3 className="text-xl font-bold text-white">Baza Danych w Chmurze (Neon Postgres)</h3>
+                            <p className="text-sm text-slate-400 mt-1">Skonfiguruj połączenie, aby synchronizować dane między urządzeniami.</p>
+                        </div>
+                        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
+                            dbConnectionCheck === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                            dbConnectionCheck === 'error' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
+                            dbConnectionCheck === 'checking' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
+                            'bg-slate-800 text-slate-500 border-white/10'
+                        }`}>
+                            {dbConnectionCheck === 'checking' && <RefreshCcw size={12} className="animate-spin" />}
+                            {dbConnectionCheck === 'success' && <CheckCircle2 size={12} />}
+                            {dbConnectionCheck === 'error' && <AlertTriangle size={12} />}
+                            {dbConnectionCheck === 'idle' ? 'Rozłączono' : dbConnectionCheck === 'checking' ? 'Testowanie...' : dbConnectionCheck === 'success' ? 'Połączono' : 'Błąd'}
+                        </div>
+                    </div>
+
+                    <div className="mt-6">
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2">
+                            <Wifi size={12} /> Connection String (DATABASE_URL)
+                        </label>
+                        <div className="relative">
+                            <input 
+                                type={showDbUrl ? "text" : "password"}
+                                value={config.databaseUrl}
+                                onChange={(e) => setConfig({...config, databaseUrl: e.target.value})}
+                                placeholder="postgres://user:password@endpoint.neon.tech/neondb?sslmode=require"
+                                className="w-full pl-4 pr-12 py-3.5 rounded-xl bg-black/40 border border-white/10 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 outline-none text-white font-mono text-sm transition-all shadow-inner"
+                            />
+                            <button 
+                                onClick={() => setShowDbUrl(!showDbUrl)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                            >
+                                {showDbUrl ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
+                        <p className="text-[10px] text-slate-600 mt-2">
+                            Link do bazy danych znajdziesz w konsoli Neon w sekcji "Connection Details". 
+                            Pamiętaj, że klucz zapisywany jest w LocalStorage przeglądarki.
+                        </p>
+                        
+                        <div className="mt-4 flex justify-end">
+                             <button 
+                                onClick={testDbConnection}
+                                className="px-5 py-2 bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 border border-cyan-500/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2"
+                             >
+                                 <RefreshCcw size={14} className={dbConnectionCheck === 'checking' ? 'animate-spin' : ''} />
+                                 Testuj Połączenie
+                             </button>
+                        </div>
+                    </div>
+                  </div>
+               </div>
+           </div>
+        </div>
         
         {/* API Status */}
         <div className="glass-panel rounded-2xl p-8 relative overflow-hidden flex items-center justify-between">
@@ -126,7 +228,7 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
                 <h3 className="text-xl font-bold text-white">Google Gemini AI</h3>
                 <p className="text-sm text-slate-400 mt-1">Status integracji z modelem językowym.</p>
                 <div className="mt-2 text-xs font-mono text-slate-500">
-                    {hasApiKey ? 'API KEY PRESENT' : 'MISSING API KEY'}
+                    {hasApiKey ? 'API KEY PRESENT' : 'MISSING API KEY (Check .env)'}
                 </div>
               </div>
             </div>

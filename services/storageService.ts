@@ -1,4 +1,4 @@
-import { Note, Task, CalendarEvent } from '../types';
+import { Note, Task, CalendarEvent, AppSettings } from '../types';
 
 // This service communicates with the Netlify Serverless Function.
 // It includes a robust fallback to LocalStorage if the backend is unreachable
@@ -25,13 +25,36 @@ const saveToLocalStorage = (key: string, data: any) => {
   }
 };
 
+// Helper to get client-side configured Database URL
+const getClientDatabaseUrl = (): string | undefined => {
+    try {
+        const configStr = localStorage.getItem('lifeos_config');
+        if (configStr) {
+            const config = JSON.parse(configStr) as AppSettings;
+            return config.databaseUrl && config.databaseUrl.trim() !== '' ? config.databaseUrl : undefined;
+        }
+    } catch (e) {
+        return undefined;
+    }
+    return undefined;
+};
+
 const apiRequest = async <T>(type: 'notes' | 'tasks' | 'events', method: 'GET' | 'POST', data?: any): Promise<T[]> => {
   try {
+    const dbUrl = getClientDatabaseUrl();
+    
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+    };
+
+    // If user has configured a custom DB URL, send it in headers
+    if (dbUrl) {
+        headers['X-Database-Url'] = dbUrl;
+    }
+
     const options: RequestInit = {
       method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
     };
 
     if (data) {
@@ -40,7 +63,7 @@ const apiRequest = async <T>(type: 'notes' | 'tasks' | 'events', method: 'GET' |
 
     // Attempt API fetch with a timeout to avoid hanging
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout (increased for cold starts)
 
     const response = await fetch(`${API_URL}?type=${type}`, {
         ...options,
@@ -64,7 +87,7 @@ const apiRequest = async <T>(type: 'notes' | 'tasks' | 'events', method: 'GET' |
     return result.data || [];
 
   } catch (error) {
-    console.warn(`Backend connection failed for ${type}. Switching to Local Storage Mode.`);
+    console.warn(`Backend connection failed for ${type}. Switching to Local Storage Mode.`, error);
     
     if (USE_LOCAL_STORAGE_FALLBACK) {
         if (method === 'GET') {
