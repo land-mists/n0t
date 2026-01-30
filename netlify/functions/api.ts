@@ -9,23 +9,41 @@ const getSql = () => {
   return neon(dbUrl);
 };
 
-export default async (req: Request) => {
-  // CORS Headers for development if needed, though redirects handle this in prod
+// Standard Netlify Function Handler (AWS Lambda style)
+export const handler = async (event: any, context: any) => {
+  // CORS Headers
   const headers = {
     'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
   };
 
+  // Handle preflight options request
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers,
+      body: ''
+    };
+  }
+
   try {
-    const url = new URL(req.url);
-    const type = url.searchParams.get('type');
+    const type = event.queryStringParameters?.type;
+    
+    // Connect to Neon
     const sql = getSql();
 
     if (!['notes', 'tasks', 'events'].includes(type || '')) {
-      return new Response(JSON.stringify({ error: 'Invalid type parameter' }), { status: 400, headers });
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'Invalid type parameter' })
+      };
     }
 
     // GET: Fetch all records for the type
-    if (req.method === 'GET') {
+    if (event.httpMethod === 'GET') {
       let query = '';
       if (type === 'notes') query = 'SELECT * FROM notes ORDER BY date DESC';
       if (type === 'tasks') query = 'SELECT * FROM tasks';
@@ -33,41 +51,36 @@ export default async (req: Request) => {
 
       const result = await sql(query);
       
-      // Transform keys from snake_case (DB) to camelCase (App) if necessary
-      // For simplicity, we assume the DB columns match the JSON keys or we map them here.
-      // In this implementation, we are storing the main data as JSONB or columns matching types.
-      // To keep it robust with the "saveAll" logic of the frontend, we map simply.
-      
-      // Let's assume standard columns. We map date fields back to strings if date objects.
-      const mappedResult = result.map(row => {
-          // Task specific mapping
+      const mappedResult = result.map((row: any) => {
           if(type === 'tasks') {
              return { ...row, dueDate: row.duedate, priority: row.priority, status: row.status };
           }
           return row;
       });
 
-      return new Response(JSON.stringify({ data: mappedResult }), { status: 200, headers });
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ data: mappedResult })
+      };
     }
 
-    // POST: Overwrite all (Sync strategy matching the frontend 'saveAll' logic)
-    // NOTE: In a high-traffic production app, you would use granular INSERT/UPDATE/DELETE.
-    // Given the current architecture uses "saveAll", we will replace the user's data for consistency.
-    if (req.method === 'POST') {
-      const body = await req.json();
+    // POST: Overwrite all
+    if (event.httpMethod === 'POST') {
+      // event.body is a string in Lambda-style functions
+      const body = JSON.parse(event.body || '[]');
       
       if (!Array.isArray(body)) {
-        return new Response(JSON.stringify({ error: 'Body must be an array' }), { status: 400, headers });
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: 'Body must be an array' })
+        };
       }
 
-      // Transaction-like approach: Delete all and re-insert
-      // Note: Neon serverless http client doesn't support complex transactions in one go easily without 'transaction()' wrapper 
-      // but for this scale, sequential execution is acceptable.
-
       if (type === 'notes') {
-        await sql('DELETE FROM notes'); // Clear table
+        await sql('DELETE FROM notes'); 
         if (body.length > 0) {
-            // Batch insert
             for (const note of body) {
                 await sql('INSERT INTO notes (id, title, content, date, color) VALUES ($1, $2, $3, $4, $5)', 
                     [note.id, note.title, note.content, note.date, note.color]);
@@ -88,24 +101,32 @@ export default async (req: Request) => {
       if (type === 'events') {
         await sql('DELETE FROM events');
         if (body.length > 0) {
-            for (const event of body) {
+            for (const item of body) {
                 await sql('INSERT INTO events (id, title, description, start_time, end_time, isrecurring, istasklinked) VALUES ($1, $2, $3, $4, $5, $6, $7)', 
-                    [event.id, event.title, event.description, event.start, event.end, event.isRecurring, event.isTaskLinked || false]);
+                    [item.id, item.title, item.description, item.start, item.end, item.isRecurring, item.isTaskLinked || false]);
             }
         }
       }
 
-      return new Response(JSON.stringify({ success: true }), { status: 200, headers });
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({ success: true })
+      };
     }
 
-    return new Response('Method not allowed', { status: 405, headers });
+    return {
+      statusCode: 405,
+      headers,
+      body: 'Method not allowed'
+    };
 
   } catch (error: any) {
     console.error('Database Error:', error);
-    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers });
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error.message })
+    };
   }
-};
-
-export const config = {
-  path: "/api"
 };

@@ -6,11 +6,21 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+# Fix: Redirect /api (exact match) to the function. This fixes the "File not found" error.
+[[redirects]]
+  from = "/api"
+  to = "/.netlify/functions/api"
+  status = 200
+  force = true
+
+# Keep wildcard for potential future sub-paths
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api"
   status = 200
+  force = true
 
+# SPA Fallback
 [[redirects]]
   from = "/*"
   to = "/index.html"

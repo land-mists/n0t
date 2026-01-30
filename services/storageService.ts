@@ -1,9 +1,29 @@
 import { Note, Task, CalendarEvent } from '../types';
 
-// This service now communicates with the Netlify Serverless Function
-// which acts as a secure proxy to the Neon Postgres database.
+// This service communicates with the Netlify Serverless Function.
+// It includes a robust fallback to LocalStorage if the backend is unreachable
+// or if the database is not configured (missing DATABASE_URL).
 
-const API_URL = '/api'; // Redirects to /.netlify/functions/api configured in netlify.toml
+const API_URL = '/api'; 
+const USE_LOCAL_STORAGE_FALLBACK = true;
+
+const getFromLocalStorage = <T>(key: string): T[] => {
+  try {
+    const item = localStorage.getItem(`lifeos_${key}`);
+    return item ? JSON.parse(item) : [];
+  } catch (e) {
+    console.error('Local Storage Read Error', e);
+    return [];
+  }
+};
+
+const saveToLocalStorage = (key: string, data: any) => {
+  try {
+    localStorage.setItem(`lifeos_${key}`, JSON.stringify(data));
+  } catch (e) {
+    console.error('Local Storage Write Error', e);
+  }
+};
 
 const apiRequest = async <T>(type: 'notes' | 'tasks' | 'events', method: 'GET' | 'POST', data?: any): Promise<T[]> => {
   try {
@@ -18,21 +38,45 @@ const apiRequest = async <T>(type: 'notes' | 'tasks' | 'events', method: 'GET' |
       options.body = JSON.stringify(data);
     }
 
-    // Append type as query param
-    const response = await fetch(`${API_URL}?type=${type}`, options);
+    // Attempt API fetch with a timeout to avoid hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+    const response = await fetch(`${API_URL}?type=${type}`, {
+        ...options,
+        signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
-      console.warn(`API Error for ${type}: ${response.statusText}. Falling back to empty state/local cache logic if implemented.`);
-      // On connection error or offline, you might want to return an empty array or handle retry logic.
-      // For this implementation, we throw to alert the app.
-      throw new Error(`Server error: ${response.statusText}`);
+       // Throw to trigger fallback
+       throw new Error(`Server error: ${response.status} ${response.statusText}`);
     }
 
     const result = await response.json();
+    
+    // On successful GET, cache data to LocalStorage for future offline use
+    if (method === 'GET' && result.data) {
+        saveToLocalStorage(type, result.data);
+    }
+    
     return result.data || [];
+
   } catch (error) {
-    console.error(`Storage Service Error (${type}):`, error);
-    // Fallback: If API fails (e.g. dev mode without Netlify Dev), return empty array to prevent crash
+    console.warn(`Backend connection failed for ${type}. Switching to Local Storage Mode.`);
+    
+    if (USE_LOCAL_STORAGE_FALLBACK) {
+        if (method === 'GET') {
+            return getFromLocalStorage<T>(type);
+        } else if (method === 'POST' && data) {
+            // In fallback mode, we save directly to local storage
+            saveToLocalStorage(type, data);
+            return data;
+        }
+    }
+    
+    // If fallback is disabled and API fails, return empty to prevent crash
     return [];
   }
 };
