@@ -2,7 +2,7 @@ import { Note, Task, CalendarEvent, AppSettings } from '../types';
 
 // This service communicates with the Netlify Serverless Function.
 // It includes a robust fallback to LocalStorage if the backend is unreachable
-// or if the database is not configured (missing DATABASE_URL).
+// or if the database is not configured (missing DATABASE_URL/ID).
 
 const API_URL = '/api'; 
 const USE_LOCAL_STORAGE_FALLBACK = true;
@@ -25,13 +25,13 @@ const saveToLocalStorage = (key: string, data: any) => {
   }
 };
 
-// Helper to get client-side configured Database URL
-const getClientDatabaseUrl = (): string | undefined => {
+// Helper to get client-side configured Database ID
+const getClientDatabaseId = (): string | undefined => {
     try {
         const configStr = localStorage.getItem('lifeos_config');
         if (configStr) {
             const config = JSON.parse(configStr) as AppSettings;
-            return config.databaseUrl && config.databaseUrl.trim() !== '' ? config.databaseUrl : undefined;
+            return config.databaseId && config.databaseId.trim() !== '' ? config.databaseId : undefined;
         }
     } catch (e) {
         return undefined;
@@ -41,15 +41,15 @@ const getClientDatabaseUrl = (): string | undefined => {
 
 const apiRequest = async <T>(type: 'notes' | 'tasks' | 'events', method: 'GET' | 'POST', data?: any): Promise<T[]> => {
   try {
-    const dbUrl = getClientDatabaseUrl();
+    const dbId = getClientDatabaseId();
     
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
     };
 
-    // If user has configured a custom DB URL, send it in headers
-    if (dbUrl) {
-        headers['X-Database-Url'] = dbUrl;
+    // If user has configured a custom DB ID, send it in headers
+    if (dbId) {
+        headers['X-Database-Id'] = dbId;
     }
 
     const options: RequestInit = {

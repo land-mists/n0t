@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AppSettings, SyncStatus } from '../types';
 import { notificationService } from '../services/notificationService';
 import { storageService } from '../services/storageService';
-import { Save, Key, CheckCircle2, AlertTriangle, RefreshCcw, Settings, Bell, BellRing, Clock, ShieldAlert, Database, Eye, EyeOff, Wifi } from 'lucide-react';
+import { Save, Key, CheckCircle2, AlertTriangle, RefreshCcw, Settings, Bell, BellRing, Clock, ShieldAlert, Database, Eye, EyeOff, Fingerprint } from 'lucide-react';
 
 interface SettingsProps {
   syncStatus: SyncStatus;
@@ -16,13 +16,13 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
     weatherLocation: 'Skierniewice, PL',
     notificationsEnabled: false,
     notificationTiming: '24h',
-    databaseUrl: ''
+    databaseId: ''
   });
   
   const [originalConfig, setOriginalConfig] = useState<string>('');
   const [isSaved, setIsSaved] = useState(false);
   const [permissionState, setPermissionState] = useState(notificationService.getPermissionState());
-  const [showDbUrl, setShowDbUrl] = useState(false);
+  const [showDbId, setShowDbId] = useState(false);
   const [dbConnectionCheck, setDbConnectionCheck] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
 
   const hasApiKey = !!process.env.API_KEY;
@@ -38,7 +38,7 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
             notificationsEnabled: parsed.notificationsEnabled === true,
             notificationTiming: parsed.notificationTiming || '24h',
             weatherLocation: parsed.weatherLocation || 'Skierniewice, PL',
-            databaseUrl: parsed.databaseUrl || ''
+            databaseId: parsed.databaseId || ''
         };
         setConfig(loadedConfig);
         setOriginalConfig(JSON.stringify(loadedConfig));
@@ -114,9 +114,6 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
   };
 
   const testDbConnection = async () => {
-    // Save temporarily to storage service knows about it, or update service to read from state?
-    // The service reads from localStorage, so we must save first or pass it.
-    // Ideally, we just check if the endpoint responds.
     setDbConnectionCheck('checking');
     
     // We need to save to LS for the storage service to pick it up immediately during this test
@@ -163,8 +160,8 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
                   <div className="flex-1">
                     <div className="flex justify-between items-start">
                         <div>
-                            <h3 className="text-xl font-bold text-white">Baza Danych w Chmurze (Neon Postgres)</h3>
-                            <p className="text-sm text-slate-400 mt-1">Skonfiguruj połączenie, aby synchronizować dane między urządzeniami.</p>
+                            <h3 className="text-xl font-bold text-white">Baza Danych w Chmurze</h3>
+                            <p className="text-sm text-slate-400 mt-1">Skonfiguruj połączenie z bazą Neon Postgres.</p>
                         </div>
                         <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
                             dbConnectionCheck === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
@@ -181,26 +178,25 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
 
                     <div className="mt-6">
                         <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2">
-                            <Wifi size={12} /> Connection String (DATABASE_URL)
+                            <Fingerprint size={12} /> ID Bazy Danych (Connection String)
                         </label>
                         <div className="relative">
                             <input 
-                                type={showDbUrl ? "text" : "password"}
-                                value={config.databaseUrl}
-                                onChange={(e) => setConfig({...config, databaseUrl: e.target.value})}
-                                placeholder="postgres://user:password@endpoint.neon.tech/neondb?sslmode=require"
+                                type={showDbId ? "text" : "password"}
+                                value={config.databaseId}
+                                onChange={(e) => setConfig({...config, databaseId: e.target.value})}
+                                placeholder="postgres://user:password@endpoint..."
                                 className="w-full pl-4 pr-12 py-3.5 rounded-xl bg-black/40 border border-white/10 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 outline-none text-white font-mono text-sm transition-all shadow-inner"
                             />
                             <button 
-                                onClick={() => setShowDbUrl(!showDbUrl)}
+                                onClick={() => setShowDbId(!showDbId)}
                                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
                             >
-                                {showDbUrl ? <EyeOff size={18} /> : <Eye size={18} />}
+                                {showDbId ? <EyeOff size={18} /> : <Eye size={18} />}
                             </button>
                         </div>
                         <p className="text-[10px] text-slate-600 mt-2">
-                            Link do bazy danych znajdziesz w konsoli Neon w sekcji "Connection Details". 
-                            Pamiętaj, że klucz zapisywany jest w LocalStorage przeglądarki.
+                            Wprowadź swój identyfikator połączenia z bazą danych (URI).
                         </p>
                         
                         <div className="mt-4 flex justify-end">

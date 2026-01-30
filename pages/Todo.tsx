@@ -276,8 +276,20 @@ const Todo: React.FC<TodoProps> = ({ tasks, setTasks }) => {
               <option value="Done">Zrobione</option>
             </select>
           </div>
-          <div className="flex justify-end pt-4 border-t border-white/10 mt-2">
-            <button onClick={handleSave} className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white px-8 py-3 rounded-xl hover:from-cyan-500 hover:to-blue-500 font-bold shadow-lg shadow-cyan-900/40 transition-all border border-white/10">Zapisz Zmiany</button>
+          
+          <div className="flex justify-end items-center gap-3 pt-6 border-t border-white/10 mt-4">
+             <button 
+                onClick={() => setIsModalOpen(false)}
+                className="px-6 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all text-sm font-bold border border-transparent hover:border-white/5"
+             >
+                Anuluj
+             </button>
+            <button 
+                onClick={handleSave} 
+                className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white px-6 py-2.5 rounded-xl hover:from-cyan-500 hover:to-blue-500 font-bold shadow-lg shadow-cyan-900/20 transition-all border border-white/10 hover:scale-[1.02] active:scale-95 text-sm uppercase tracking-wide"
+            >
+                Zapisz Zmiany
+            </button>
           </div>
         </div>
       </Modal>

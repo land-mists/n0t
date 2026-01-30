@@ -242,10 +242,16 @@ const News: React.FC = () => {
                 </div>
             </div>
             
-            <div className="pt-6 border-t border-white/10 flex justify-end">
+            <div className="flex justify-end items-center gap-3 pt-6 border-t border-white/10 mt-4">
+                <button 
+                    onClick={() => setIsSettingsOpen(false)}
+                    className="px-6 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all text-sm font-bold border border-transparent hover:border-white/5"
+                >
+                    Anuluj
+                </button>
                 <button 
                     onClick={() => { setIsSettingsOpen(false); loadNews(); }}
-                    className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white px-6 py-2.5 rounded-xl hover:from-cyan-500 hover:to-blue-500 font-bold transition-all shadow-lg shadow-cyan-900/20 text-sm border border-white/10"
+                    className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white px-6 py-2.5 rounded-xl hover:from-cyan-500 hover:to-blue-500 font-bold shadow-lg shadow-cyan-900/20 transition-all border border-white/10 hover:scale-[1.02] active:scale-95 text-sm uppercase tracking-wide"
                 >
                     Zapisz i Szukaj
                 </button>

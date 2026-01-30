@@ -60,5 +60,5 @@ export interface AppSettings {
   weatherLocation: string;
   notificationsEnabled?: boolean; // New setting
   notificationTiming?: 'same-day' | '24h' | '48h'; // Configurable timing
-  databaseUrl?: string; // Client-side override for Neon DB connection
+  databaseId?: string; // Renamed from databaseUrl
 }
