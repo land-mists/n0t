@@ -4,7 +4,8 @@ import { Note, Task, CalendarEvent, AppSettings, SyncStatus } from './types';
 import { storageService } from './services/storageService';
 import { googleIntegration } from './services/googleIntegration';
 import { notificationService } from './services/notificationService';
-import { LayoutDashboard, LogOut, Menu, X, Cloud, CloudOff, RefreshCw, AlertTriangle } from 'lucide-react';
+import { LayoutDashboard, LogOut, Menu, X, Cloud, CloudOff, RefreshCw, AlertTriangle, Database, Server, User, Activity, ShieldCheck, Wifi } from 'lucide-react';
+import { Modal } from './components/Modal';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -27,8 +28,10 @@ export default function App() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Connection Status
+  // Connection Status & Modal
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('disconnected');
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [dbDetails, setDbDetails] = useState<{ user: string; host: string; dbName: string } | null>(null);
 
   // Initialization
   useEffect(() => {
@@ -63,6 +66,24 @@ export default function App() {
                    setSyncStatus('disconnected'); // Ready to connect
                 }
             });
+        }
+        
+        // Parse DB details for status modal (Adapted for MongoDB)
+        if (parsed.databaseId) {
+             try {
+                 // Regex to parse mongodb:// or mongodb+srv://
+                 const match = parsed.databaseId.match(/mongodb(?:\+srv)?:\/\/([^:]+):([^@]+)@([^/]+)\/([^?]+)/);
+                 if (match) {
+                     setDbDetails({
+                         user: match[1],
+                         host: match[3],
+                         dbName: match[4].split('?')[0]
+                     });
+                     setSyncStatus('connected');
+                 }
+             } catch (e) {
+                 console.error("Failed to parse DB string", e);
+             }
         }
       }
     };
@@ -209,7 +230,7 @@ export default function App() {
       disconnected: { 
         icon: <CloudOff size={14} />, 
         text: 'LOCAL', 
-        className: 'text-slate-400 bg-slate-900/50 border-white/5' 
+        className: 'text-slate-400 bg-slate-900/50 border-white/5 hover:bg-slate-800' 
       },
       connecting: { 
         icon: <RefreshCw size={14} className="animate-spin" />, 
@@ -218,8 +239,8 @@ export default function App() {
       },
       connected: { 
         icon: <Cloud size={14} />, 
-        text: 'SYNC ON', 
-        className: 'text-emerald-400 bg-emerald-900/20 border-emerald-500/20 shadow-[0_0_10px_rgba(52,211,153,0.2)]' 
+        text: 'MONGODB', 
+        className: 'text-emerald-400 bg-emerald-900/20 border-emerald-500/20 shadow-[0_0_10px_rgba(52,211,153,0.2)] hover:bg-emerald-900/40 cursor-pointer' 
       },
       syncing: { 
         icon: <RefreshCw size={14} className="animate-spin" />, 
@@ -229,17 +250,21 @@ export default function App() {
       error: { 
         icon: <AlertTriangle size={14} />, 
         text: 'ERROR', 
-        className: 'text-red-400 bg-red-900/20 border-red-500/20' 
+        className: 'text-red-400 bg-red-900/20 border-red-500/20 hover:bg-red-900/30 cursor-pointer' 
       },
     };
 
     const current = statusConfig[syncStatus];
 
     return (
-      <div className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all duration-500 ease-in-out backdrop-blur-md ${current.className}`}>
+      <button 
+        onClick={() => setIsStatusModalOpen(true)}
+        className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all duration-500 ease-in-out backdrop-blur-md ${current.className}`}
+        title="Kliknij, aby zobaczyć szczegóły"
+      >
         <span>{current.icon}</span>
         <span className="text-[9px] font-bold tracking-widest">{current.text}</span>
-      </div>
+      </button>
     );
   };
 
@@ -400,6 +425,80 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* === DB STATUS MODAL === */}
+      <Modal isOpen={isStatusModalOpen} onClose={() => setIsStatusModalOpen(false)} title="Szczegóły Połączenia">
+         <div className="space-y-6">
+            <div className="bg-black/40 p-6 rounded-2xl border border-white/10 relative overflow-hidden group">
+                 <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-bl-full pointer-events-none transition-transform group-hover:scale-110"></div>
+                 
+                 <div className="flex items-center gap-4 mb-6">
+                    <div className={`p-4 rounded-full border ${syncStatus === 'connected' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-slate-800/50 border-white/10 text-slate-500'}`}>
+                        {syncStatus === 'connected' ? <Activity size={32} className="drop-shadow-[0_0_10px_rgba(52,211,153,0.5)]" /> : <CloudOff size={32} />}
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-bold text-white tracking-tight">Status: {syncStatus === 'connected' ? 'POŁĄCZONO' : 'ROZŁĄCZONO'}</h3>
+                        <p className="text-sm text-slate-400">{syncStatus === 'connected' ? 'Synchronizacja z MongoDB Atlas aktywna.' : 'Działanie w trybie lokalnym.'}</p>
+                    </div>
+                 </div>
+
+                 {dbDetails && syncStatus === 'connected' ? (
+                     <div className="space-y-4">
+                         <div className="p-4 bg-white/[0.03] rounded-xl border border-white/5 flex items-center justify-between group/item hover:border-cyan-500/30 transition-colors">
+                             <div className="flex items-center gap-3">
+                                 <Database size={18} className="text-cyan-400" />
+                                 <div className="flex flex-col">
+                                     <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Baza Danych</span>
+                                     <span className="text-sm text-white font-mono">{dbDetails.dbName}</span>
+                                 </div>
+                             </div>
+                             <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_5px_lime]"></div>
+                         </div>
+                         
+                         <div className="p-4 bg-white/[0.03] rounded-xl border border-white/5 flex items-center justify-between group/item hover:border-blue-500/30 transition-colors">
+                             <div className="flex items-center gap-3">
+                                 <Server size={18} className="text-blue-400" />
+                                 <div className="flex flex-col">
+                                     <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Host Cluster</span>
+                                     <span className="text-sm text-white font-mono truncate max-w-[200px]" title={dbDetails.host}>{dbDetails.host}</span>
+                                 </div>
+                             </div>
+                             <Wifi size={14} className="text-blue-500" />
+                         </div>
+
+                         <div className="p-4 bg-white/[0.03] rounded-xl border border-white/5 flex items-center justify-between group/item hover:border-purple-500/30 transition-colors">
+                             <div className="flex items-center gap-3">
+                                 <User size={18} className="text-purple-400" />
+                                 <div className="flex flex-col">
+                                     <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">ID Użytkownika</span>
+                                     <span className="text-sm text-white font-mono">{dbDetails.user}</span>
+                                 </div>
+                             </div>
+                             <ShieldCheck size={14} className="text-purple-500" />
+                         </div>
+                     </div>
+                 ) : (
+                     <div className="text-center py-6 border-2 border-dashed border-white/10 rounded-xl bg-white/[0.01]">
+                         <Database size={24} className="mx-auto text-slate-600 mb-2 opacity-50" />
+                         <p className="text-sm text-slate-500">Brak skonfigurowanego połączenia MongoDB.</p>
+                         <button onClick={() => { setIsStatusModalOpen(false); setCurrentPage(PAGES.SETTINGS); }} className="mt-3 text-cyan-400 text-xs font-bold hover:underline">
+                             Przejdź do Ustawień
+                         </button>
+                     </div>
+                 )}
+            </div>
+            
+            <div className="flex justify-end pt-2">
+                <button 
+                    onClick={() => setIsStatusModalOpen(false)}
+                    className="bg-white/5 hover:bg-white/10 text-white px-6 py-2.5 rounded-xl border border-white/10 text-sm font-bold uppercase tracking-wider transition-all"
+                >
+                    Zamknij
+                </button>
+            </div>
+         </div>
+      </Modal>
+
     </div>
   );
 }

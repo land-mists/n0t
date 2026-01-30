@@ -160,8 +160,8 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
                   <div className="flex-1">
                     <div className="flex justify-between items-start">
                         <div>
-                            <h3 className="text-xl font-bold text-white">Baza Danych w Chmurze</h3>
-                            <p className="text-sm text-slate-400 mt-1">Skonfiguruj połączenie z bazą Neon Postgres.</p>
+                            <h3 className="text-xl font-bold text-white">Baza Danych MongoDB</h3>
+                            <p className="text-sm text-slate-400 mt-1">Skonfiguruj połączenie z MongoDB Atlas.</p>
                         </div>
                         <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
                             dbConnectionCheck === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
@@ -185,7 +185,7 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
                                 type={showDbId ? "text" : "password"}
                                 value={config.databaseId}
                                 onChange={(e) => setConfig({...config, databaseId: e.target.value})}
-                                placeholder="postgres://user:password@endpoint..."
+                                placeholder="mongodb+srv://user:password@cluster.mongodb.net/dbname"
                                 className="w-full pl-4 pr-12 py-3.5 rounded-xl bg-black/40 border border-white/10 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 outline-none text-white font-mono text-sm transition-all shadow-inner"
                             />
                             <button 
@@ -196,7 +196,7 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
                             </button>
                         </div>
                         <p className="text-[10px] text-slate-600 mt-2">
-                            Wprowadź swój identyfikator połączenia z bazą danych (URI).
+                            Wprowadź swój Connection String z MongoDB Atlas (URI).
                         </p>
                         
                         <div className="mt-4 flex justify-end">

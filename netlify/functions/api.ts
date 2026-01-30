@@ -1,21 +1,45 @@
-import { neon } from '@neondatabase/serverless';
+import { MongoClient } from 'mongodb';
 
-// Helper to get DB client
-// Now checks headers for a client-provided ID (which acts as the connection string) first
-const getSql = (headers: any) => {
-  // Headers are usually lowercased by Netlify/AWS
+// Cached connection for hot lambdas
+let cachedClient: MongoClient | null = null;
+let cachedDb: any = null;
+
+const getClient = async (headers: any) => {
+  // 1. Get Connection String
   const headerId = headers['x-database-id'] || headers['X-Database-Id'];
   const envUrl = process.env.DATABASE_URL;
-  
-  const dbUrl = headerId || envUrl;
+  const uri = headerId || envUrl;
 
-  if (!dbUrl) {
-    throw new Error('DATABASE_URL is not set (Check Settings for Database ID or .env)');
+  if (!uri) {
+    throw new Error('Database URI is not set (Check Settings for Database ID or .env)');
   }
-  return neon(dbUrl);
+
+  // 2. Reuse Connection if possible and if URI matches (handling dynamic switching)
+  if (cachedClient && cachedClient.s && (cachedClient.s as any).url === uri) {
+      return { client: cachedClient, db: cachedDb };
+  }
+
+  // 3. Close old connection if URI changed (rare edge case in single-user app)
+  if (cachedClient) {
+      await cachedClient.close();
+  }
+
+  // 4. Create New Connection
+  const client = new MongoClient(uri);
+  await client.connect();
+  
+  // Parse DB name from URI or default to 'lifeos'
+  const urlObj = new URL(uri.replace('mongodb+srv://', 'http://').replace('mongodb://', 'http://'));
+  const dbName = urlObj.pathname.substring(1) || 'lifeos';
+  
+  const db = client.db(dbName);
+
+  cachedClient = client;
+  cachedDb = db;
+
+  return { client, db };
 };
 
-// Standard Netlify Function Handler (AWS Lambda style)
 export const handler = async (event: any, context: any) => {
   // CORS Headers
   const headers = {
@@ -25,20 +49,13 @@ export const handler = async (event: any, context: any) => {
     'Access-Control-Allow-Headers': 'Content-Type, X-Database-Id'
   };
 
-  // Handle preflight options request
   if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204,
-      headers,
-      body: ''
-    };
+    return { statusCode: 204, headers, body: '' };
   }
 
   try {
     const type = event.queryStringParameters?.type;
-    
-    // Connect to Neon using header or env
-    const sql = getSql(event.headers || {});
+    const { db } = await getClient(event.headers || {});
 
     if (!['notes', 'tasks', 'events'].includes(type || '')) {
       return {
@@ -48,20 +65,18 @@ export const handler = async (event: any, context: any) => {
       };
     }
 
-    // GET: Fetch all records for the type
-    if (event.httpMethod === 'GET') {
-      let query = '';
-      if (type === 'notes') query = 'SELECT * FROM notes ORDER BY date DESC';
-      if (type === 'tasks') query = 'SELECT * FROM tasks';
-      if (type === 'events') query = 'SELECT * FROM events';
+    const collection = db.collection(type);
 
-      const result = await sql(query);
+    // GET: Fetch all records
+    if (event.httpMethod === 'GET') {
+      const result = await collection.find({}).toArray();
       
-      const mappedResult = result.map((row: any) => {
-          if(type === 'tasks') {
-             return { ...row, dueDate: row.duedate, priority: row.priority, status: row.status };
-          }
-          return row;
+      // Clean up Mongo specific _id if needed, but frontend expects 'id' string which we store manually
+      const mappedResult = result.map((doc: any) => {
+          // Ensure we return the 'id' field expected by frontend
+          // We strip _id to avoid confusion or pass it along if needed
+          const { _id, ...rest } = doc;
+          return { ...rest }; 
       });
 
       return {
@@ -71,47 +86,23 @@ export const handler = async (event: any, context: any) => {
       };
     }
 
-    // POST: Overwrite all
+    // POST: Overwrite all (Synchronization Mode)
+    // In a real production app, we would do diffing, but for this LifeOS "Save All" approach:
     if (event.httpMethod === 'POST') {
-      // event.body is a string in Lambda-style functions
       const body = JSON.parse(event.body || '[]');
       
       if (!Array.isArray(body)) {
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({ error: 'Body must be an array' })
-        };
+        return { statusCode: 400, headers, body: JSON.stringify({ error: 'Body must be an array' }) };
       }
 
-      if (type === 'notes') {
-        await sql('DELETE FROM notes'); 
-        if (body.length > 0) {
-            for (const note of body) {
-                await sql('INSERT INTO notes (id, title, content, date, color) VALUES ($1, $2, $3, $4, $5)', 
-                    [note.id, note.title, note.content, note.date, note.color]);
-            }
-        }
-      }
-
-      if (type === 'tasks') {
-        await sql('DELETE FROM tasks');
-        if (body.length > 0) {
-            for (const task of body) {
-                await sql('INSERT INTO tasks (id, title, description, duedate, priority, status, color) VALUES ($1, $2, $3, $4, $5, $6, $7)', 
-                    [task.id, task.title, task.description, task.dueDate, task.priority, task.status, task.color]);
-            }
-        }
-      }
-
-      if (type === 'events') {
-        await sql('DELETE FROM events');
-        if (body.length > 0) {
-            for (const item of body) {
-                await sql('INSERT INTO events (id, title, description, start_time, end_time, isrecurring, istasklinked) VALUES ($1, $2, $3, $4, $5, $6, $7)', 
-                    [item.id, item.title, item.description, item.start, item.end, item.isRecurring, item.isTaskLinked || false]);
-            }
-        }
+      // Transaction-like replacement: Delete All -> Insert All
+      // Note: MongoDB Atlas Free Tier doesn't support multi-document transactions easily without replica set setup,
+      // so we do it sequentially.
+      await collection.deleteMany({});
+      
+      if (body.length > 0) {
+        // Ensure we preserve the frontend 'id'
+        await collection.insertMany(body);
       }
 
       return {
@@ -121,11 +112,7 @@ export const handler = async (event: any, context: any) => {
       };
     }
 
-    return {
-      statusCode: 405,
-      headers,
-      body: 'Method not allowed'
-    };
+    return { statusCode: 405, headers, body: 'Method not allowed' };
 
   } catch (error: any) {
     console.error('Database Error:', error);
