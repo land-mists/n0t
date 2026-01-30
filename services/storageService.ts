@@ -1,8 +1,7 @@
 import { Note, Task, CalendarEvent, AppSettings } from '../types';
 
 // This service communicates with the Netlify Serverless Function.
-// It includes a robust fallback to LocalStorage if the backend is unreachable
-// or if the database is not configured (missing DATABASE_URL/ID).
+// It includes a robust fallback to LocalStorage if the backend is unreachable.
 
 const API_URL = '/api'; 
 const USE_LOCAL_STORAGE_FALLBACK = true;
@@ -25,31 +24,34 @@ const saveToLocalStorage = (key: string, data: any) => {
   }
 };
 
-// Helper to get client-side configured Database ID
-const getClientDatabaseId = (): string | undefined => {
+// Helper to get client-side configured Supabase Credentials
+const getSupabaseConfig = () => {
     try {
         const configStr = localStorage.getItem('lifeos_config');
         if (configStr) {
             const config = JSON.parse(configStr) as AppSettings;
-            return config.databaseId && config.databaseId.trim() !== '' ? config.databaseId : undefined;
+            if (config.supabaseUrl && config.supabaseKey) {
+                return { url: config.supabaseUrl, key: config.supabaseKey };
+            }
         }
     } catch (e) {
-        return undefined;
+        return null;
     }
-    return undefined;
+    return null;
 };
 
 const apiRequest = async <T>(type: 'notes' | 'tasks' | 'events', method: 'GET' | 'POST', data?: any): Promise<T[]> => {
   try {
-    const dbId = getClientDatabaseId();
+    const sbConfig = getSupabaseConfig();
     
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
     };
 
-    // If user has configured a custom DB ID, send it in headers
-    if (dbId) {
-        headers['X-Database-Id'] = dbId;
+    // If user has configured Supabase, send credentials in headers
+    if (sbConfig) {
+        headers['x-supabase-url'] = sbConfig.url;
+        headers['x-supabase-key'] = sbConfig.key;
     }
 
     const options: RequestInit = {
@@ -63,7 +65,7 @@ const apiRequest = async <T>(type: 'notes' | 'tasks' | 'events', method: 'GET' |
 
     // Attempt API fetch with a timeout to avoid hanging
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout (increased for cold starts)
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
 
     const response = await fetch(`${API_URL}?type=${type}`, {
         ...options,

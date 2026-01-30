@@ -1,3 +1,4 @@
+
 export type Priority = 'Low' | 'Medium' | 'High';
 export type Status = 'To Do' | 'In Progress' | 'Done';
 export type SyncStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'syncing';
@@ -60,5 +61,6 @@ export interface AppSettings {
   weatherLocation: string;
   notificationsEnabled?: boolean; // New setting
   notificationTiming?: 'same-day' | '24h' | '48h'; // Configurable timing
-  databaseId?: string; // Renamed from databaseUrl
+  supabaseUrl?: string; // Supabase Project URL
+  supabaseKey?: string; // Supabase Anon Key
 }

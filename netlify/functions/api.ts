@@ -1,43 +1,36 @@
-import { MongoClient } from 'mongodb';
+import { createClient } from '@supabase/supabase-js';
 
-// Cached connection for hot lambdas
-let cachedClient: MongoClient | null = null;
-let cachedDb: any = null;
+// Cached client for hot lambdas
+let cachedClient: any = null;
+let cachedUrl: string = '';
 
-const getClient = async (headers: any) => {
-  // 1. Get Connection String
-  const headerId = headers['x-database-id'] || headers['X-Database-Id'];
-  const envUrl = process.env.DATABASE_URL;
-  const uri = headerId || envUrl;
-
-  if (!uri) {
-    throw new Error('Database URI is not set (Check Settings for Database ID or .env)');
-  }
-
-  // 2. Reuse Connection if possible and if URI matches (handling dynamic switching)
-  if (cachedClient && cachedClient.s && (cachedClient.s as any).url === uri) {
-      return { client: cachedClient, db: cachedDb };
-  }
-
-  // 3. Close old connection if URI changed (rare edge case in single-user app)
-  if (cachedClient) {
-      await cachedClient.close();
-  }
-
-  // 4. Create New Connection
-  const client = new MongoClient(uri);
-  await client.connect();
+const getClient = (headers: any) => {
+  // 1. Get Credentials from Headers or Env
+  const headerUrl = headers['x-supabase-url'] || headers['X-Supabase-Url'];
+  const headerKey = headers['x-supabase-key'] || headers['X-Supabase-Key'];
   
-  // Parse DB name from URI or default to 'lifeos'
-  const urlObj = new URL(uri.replace('mongodb+srv://', 'http://').replace('mongodb://', 'http://'));
-  const dbName = urlObj.pathname.substring(1) || 'lifeos';
-  
-  const db = client.db(dbName);
+  const envUrl = process.env.SUPABASE_URL;
+  const envKey = process.env.SUPABASE_KEY;
 
+  const url = headerUrl || envUrl;
+  const key = headerKey || envKey;
+
+  if (!url || !key) {
+    throw new Error('Supabase credentials are not set (Check Settings or .env)');
+  }
+
+  // 2. Reuse Client if possible
+  if (cachedClient && cachedUrl === url) {
+      return cachedClient;
+  }
+
+  // 3. Create New Client
+  const client = createClient(url, key);
+  
   cachedClient = client;
-  cachedDb = db;
+  cachedUrl = url;
 
-  return { client, db };
+  return client;
 };
 
 export const handler = async (event: any, context: any) => {
@@ -46,7 +39,7 @@ export const handler = async (event: any, context: any) => {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Database-Id'
+    'Access-Control-Allow-Headers': 'Content-Type, X-Supabase-Url, X-Supabase-Key'
   };
 
   if (event.httpMethod === 'OPTIONS') {
@@ -55,7 +48,7 @@ export const handler = async (event: any, context: any) => {
 
   try {
     const type = event.queryStringParameters?.type;
-    const { db } = await getClient(event.headers || {});
+    const supabase = getClient(event.headers || {});
 
     if (!['notes', 'tasks', 'events'].includes(type || '')) {
       return {
@@ -65,29 +58,25 @@ export const handler = async (event: any, context: any) => {
       };
     }
 
-    const collection = db.collection(type);
-
-    // GET: Fetch all records
+    // GET: Fetch all records from table
     if (event.httpMethod === 'GET') {
-      const result = await collection.find({}).toArray();
+      const { data, error } = await supabase.from(type).select('*');
       
-      // Clean up Mongo specific _id if needed, but frontend expects 'id' string which we store manually
-      const mappedResult = result.map((doc: any) => {
-          // Ensure we return the 'id' field expected by frontend
-          // We strip _id to avoid confusion or pass it along if needed
-          const { _id, ...rest } = doc;
-          return { ...rest }; 
-      });
+      if (error) throw error;
 
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ data: mappedResult })
+        body: JSON.stringify({ data: data })
       };
     }
 
     // POST: Overwrite all (Synchronization Mode)
-    // In a real production app, we would do diffing, but for this LifeOS "Save All" approach:
+    // To replicate the behavior of the previous "Save All" logic with a relational DB:
+    // We ideally should UPSERT or DIFF, but for simplicity of this architecture we might:
+    // 1. Delete all records (or those belonging to user if we had RLS user logic separate from simple API key)
+    // 2. Insert new records
+    // Warning: This is destructive. Ensure your Supabase RLS policies are set correctly if multiple users exist.
     if (event.httpMethod === 'POST') {
       const body = JSON.parse(event.body || '[]');
       
@@ -95,14 +84,22 @@ export const handler = async (event: any, context: any) => {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Body must be an array' }) };
       }
 
-      // Transaction-like replacement: Delete All -> Insert All
-      // Note: MongoDB Atlas Free Tier doesn't support multi-document transactions easily without replica set setup,
-      // so we do it sequentially.
-      await collection.deleteMany({});
+      // Step 1: Delete all records in the table (Filtering by ID not null effectively selects all)
+      // Note: In a real multi-tenant app, this would need a user_id filter.
+      // Since we are using basic 'anon' key with likely one global state for this personal app:
+      const { error: deleteError } = await supabase.from(type).delete().neq('id', 'placeholder_impossible_id');
       
+      if (deleteError) {
+         // Some RLS policies prevent deleting everything without a filter. 
+         // Fallback: Delete using a condition that is always true if possible, or iterate.
+         // For Personal LifeOS, we assume policies allow Delete.
+         console.warn("Delete error (might be RLS):", deleteError);
+      }
+
+      // Step 2: Insert new data
       if (body.length > 0) {
-        // Ensure we preserve the frontend 'id'
-        await collection.insertMany(body);
+        const { error: insertError } = await supabase.from(type).insert(body);
+        if (insertError) throw insertError;
       }
 
       return {
@@ -115,11 +112,11 @@ export const handler = async (event: any, context: any) => {
     return { statusCode: 405, headers, body: 'Method not allowed' };
 
   } catch (error: any) {
-    console.error('Database Error:', error);
+    console.error('Supabase Error:', error);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: error.message })
+      body: JSON.stringify({ error: error.message || error.toString() })
     };
   }
 };

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AppSettings, SyncStatus } from '../types';
 import { notificationService } from '../services/notificationService';
 import { storageService } from '../services/storageService';
-import { Save, Key, CheckCircle2, AlertTriangle, RefreshCcw, Settings, Bell, BellRing, Clock, ShieldAlert, Database, Eye, EyeOff, Fingerprint } from 'lucide-react';
+import { Save, Key, CheckCircle2, AlertTriangle, RefreshCcw, Settings, Bell, BellRing, Clock, ShieldAlert, Database, Eye, EyeOff, Link, Fingerprint } from 'lucide-react';
 
 interface SettingsProps {
   syncStatus: SyncStatus;
@@ -16,13 +16,14 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
     weatherLocation: 'Skierniewice, PL',
     notificationsEnabled: false,
     notificationTiming: '24h',
-    databaseId: ''
+    supabaseUrl: '',
+    supabaseKey: ''
   });
   
   const [originalConfig, setOriginalConfig] = useState<string>('');
   const [isSaved, setIsSaved] = useState(false);
   const [permissionState, setPermissionState] = useState(notificationService.getPermissionState());
-  const [showDbId, setShowDbId] = useState(false);
+  const [showKey, setShowKey] = useState(false);
   const [dbConnectionCheck, setDbConnectionCheck] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
 
   const hasApiKey = !!process.env.API_KEY;
@@ -38,7 +39,8 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
             notificationsEnabled: parsed.notificationsEnabled === true,
             notificationTiming: parsed.notificationTiming || '24h',
             weatherLocation: parsed.weatherLocation || 'Skierniewice, PL',
-            databaseId: parsed.databaseId || ''
+            supabaseUrl: parsed.supabaseUrl || '',
+            supabaseKey: parsed.supabaseKey || ''
         };
         setConfig(loadedConfig);
         setOriginalConfig(JSON.stringify(loadedConfig));
@@ -150,18 +152,18 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
 
         {/* Cloud Database Config */}
         <div className="glass-panel rounded-2xl p-8 relative overflow-hidden group">
-           <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 rounded-bl-full pointer-events-none transition-transform group-hover:scale-105"></div>
+           <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-bl-full pointer-events-none transition-transform group-hover:scale-105"></div>
            
            <div className="flex flex-col gap-6 relative z-10">
                <div className="flex items-start gap-4">
-                  <div className="p-3 bg-cyan-900/20 rounded-xl text-cyan-400 h-fit border border-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.2)]">
+                  <div className="p-3 bg-emerald-900/20 rounded-xl text-emerald-400 h-fit border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
                     <Database size={24} />
                   </div>
                   <div className="flex-1">
                     <div className="flex justify-between items-start">
                         <div>
-                            <h3 className="text-xl font-bold text-white">Baza Danych MongoDB</h3>
-                            <p className="text-sm text-slate-400 mt-1">Skonfiguruj połączenie z MongoDB Atlas.</p>
+                            <h3 className="text-xl font-bold text-white">Supabase (PostgreSQL)</h3>
+                            <p className="text-sm text-slate-400 mt-1">Skonfiguruj połączenie z chmurą Supabase.</p>
                         </div>
                         <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
                             dbConnectionCheck === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
@@ -176,33 +178,49 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
                         </div>
                     </div>
 
-                    <div className="mt-6">
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2">
-                            <Fingerprint size={12} /> ID Bazy Danych (Connection String)
-                        </label>
-                        <div className="relative">
+                    <div className="mt-6 space-y-4">
+                        <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2">
+                                <Link size={12} /> Project URL
+                            </label>
                             <input 
-                                type={showDbId ? "text" : "password"}
-                                value={config.databaseId}
-                                onChange={(e) => setConfig({...config, databaseId: e.target.value})}
-                                placeholder="mongodb+srv://user:password@cluster.mongodb.net/dbname"
-                                className="w-full pl-4 pr-12 py-3.5 rounded-xl bg-black/40 border border-white/10 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 outline-none text-white font-mono text-sm transition-all shadow-inner"
+                                type="text"
+                                value={config.supabaseUrl}
+                                onChange={(e) => setConfig({...config, supabaseUrl: e.target.value})}
+                                placeholder="https://xyz.supabase.co"
+                                className="w-full pl-4 pr-4 py-3 rounded-xl bg-black/40 border border-white/10 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 outline-none text-white font-mono text-sm transition-all shadow-inner"
                             />
-                            <button 
-                                onClick={() => setShowDbId(!showDbId)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
-                            >
-                                {showDbId ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
                         </div>
+
+                        <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2">
+                                <Key size={12} /> Anon / Public Key
+                            </label>
+                            <div className="relative">
+                                <input 
+                                    type={showKey ? "text" : "password"}
+                                    value={config.supabaseKey}
+                                    onChange={(e) => setConfig({...config, supabaseKey: e.target.value})}
+                                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                                    className="w-full pl-4 pr-12 py-3 rounded-xl bg-black/40 border border-white/10 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 outline-none text-white font-mono text-sm transition-all shadow-inner"
+                                />
+                                <button 
+                                    onClick={() => setShowKey(!showKey)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                                >
+                                    {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
+                        </div>
+
                         <p className="text-[10px] text-slate-600 mt-2">
-                            Wprowadź swój Connection String z MongoDB Atlas (URI).
+                            Znajdź te dane w ustawieniach projektu Supabase (API Settings).
                         </p>
                         
                         <div className="mt-4 flex justify-end">
                              <button 
                                 onClick={testDbConnection}
-                                className="px-5 py-2 bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 border border-cyan-500/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2"
+                                className="px-5 py-2 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2"
                              >
                                  <RefreshCcw size={14} className={dbConnectionCheck === 'checking' ? 'animate-spin' : ''} />
                                  Testuj Połączenie
@@ -218,7 +236,7 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
         <div className="glass-panel rounded-2xl p-8 relative overflow-hidden flex items-center justify-between">
            <div className="flex gap-4">
               <div className="p-3 bg-purple-900/20 rounded-xl text-purple-400 h-fit border border-purple-500/20">
-                <Key size={24} />
+                <Fingerprint size={24} />
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white">Google Gemini AI</h3>
