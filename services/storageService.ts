@@ -24,14 +24,18 @@ const saveToLocalStorage = (key: string, data: any) => {
   }
 };
 
-// Helper to get client-side configured Supabase Credentials
-const getSupabaseConfig = () => {
+// Helper to get client-side configured PlanetScale Credentials
+const getDbConfig = () => {
     try {
         const configStr = localStorage.getItem('lifeos_config');
         if (configStr) {
             const config = JSON.parse(configStr) as AppSettings;
-            if (config.supabaseUrl && config.supabaseKey) {
-                return { url: config.supabaseUrl, key: config.supabaseKey };
+            if (config.psHost && config.psUsername && config.psPassword) {
+                return { 
+                    host: config.psHost, 
+                    username: config.psUsername, 
+                    password: config.psPassword 
+                };
             }
         }
     } catch (e) {
@@ -42,16 +46,17 @@ const getSupabaseConfig = () => {
 
 const apiRequest = async <T>(type: 'notes' | 'tasks' | 'events', method: 'GET' | 'POST', data?: any): Promise<T[]> => {
   try {
-    const sbConfig = getSupabaseConfig();
+    const dbConfig = getDbConfig();
     
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
     };
 
-    // If user has configured Supabase, send credentials in headers
-    if (sbConfig) {
-        headers['x-supabase-url'] = sbConfig.url;
-        headers['x-supabase-key'] = sbConfig.key;
+    // If user has configured PlanetScale, send credentials in headers
+    if (dbConfig) {
+        headers['x-ps-host'] = dbConfig.host;
+        headers['x-ps-username'] = dbConfig.username;
+        headers['x-ps-password'] = dbConfig.password;
     }
 
     const options: RequestInit = {

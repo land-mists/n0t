@@ -1,36 +1,33 @@
-import { createClient } from '@supabase/supabase-js';
+import { connect } from '@planetscale/database';
 
-// Cached client for hot lambdas
-let cachedClient: any = null;
-let cachedUrl: string = '';
+// Cached connection configuration check
+let cachedConfigKey: string = '';
 
 const getClient = (headers: any) => {
   // 1. Get Credentials from Headers or Env
-  const headerUrl = headers['x-supabase-url'] || headers['X-Supabase-Url'];
-  const headerKey = headers['x-supabase-key'] || headers['X-Supabase-Key'];
+  const headerHost = headers['x-ps-host'] || headers['X-Ps-Host'];
+  const headerUser = headers['x-ps-username'] || headers['X-Ps-Username'];
+  const headerPass = headers['x-ps-password'] || headers['X-Ps-Password'];
   
-  const envUrl = process.env.SUPABASE_URL;
-  const envKey = process.env.SUPABASE_KEY;
+  const envHost = process.env.PS_HOST;
+  const envUser = process.env.PS_USERNAME;
+  const envPass = process.env.PS_PASSWORD;
 
-  const url = headerUrl || envUrl;
-  const key = headerKey || envKey;
+  const host = headerHost || envHost;
+  const username = headerUser || envUser;
+  const password = headerPass || envPass;
 
-  if (!url || !key) {
-    throw new Error('Supabase credentials are not set (Check Settings or .env)');
+  if (!host || !username || !password) {
+    throw new Error('PlanetScale credentials are not set (Check Settings or .env)');
   }
 
-  // 2. Reuse Client if possible
-  if (cachedClient && cachedUrl === url) {
-      return cachedClient;
-  }
+  const config = {
+    host,
+    username,
+    password
+  };
 
-  // 3. Create New Client
-  const client = createClient(url, key);
-  
-  cachedClient = client;
-  cachedUrl = url;
-
-  return client;
+  return connect(config);
 };
 
 export const handler = async (event: any, context: any) => {
@@ -39,7 +36,7 @@ export const handler = async (event: any, context: any) => {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Supabase-Url, X-Supabase-Key'
+    'Access-Control-Allow-Headers': 'Content-Type, X-Ps-Host, X-Ps-Username, X-Ps-Password'
   };
 
   if (event.httpMethod === 'OPTIONS') {
@@ -48,9 +45,12 @@ export const handler = async (event: any, context: any) => {
 
   try {
     const type = event.queryStringParameters?.type;
-    const supabase = getClient(event.headers || {});
+    const conn = getClient(event.headers || {});
 
-    if (!['notes', 'tasks', 'events'].includes(type || '')) {
+    // Allowed tables to prevent SQL injection on table name
+    const ALLOWED_TABLES = ['notes', 'tasks', 'events'];
+
+    if (!ALLOWED_TABLES.includes(type || '')) {
       return {
         statusCode: 400,
         headers,
@@ -60,9 +60,15 @@ export const handler = async (event: any, context: any) => {
 
     // GET: Fetch all records from table
     if (event.httpMethod === 'GET') {
-      const { data, error } = await supabase.from(type).select('*');
+      const results = await conn.execute(`SELECT * FROM ${type}`);
       
-      if (error) throw error;
+      // Convert boolean 1/0 to true/false if needed, though frontend handles truthy usually.
+      // PlanetScale/MySQL often returns tinyint for boolean.
+      const data = results.rows.map((row: any) => {
+          if(row.isRecurring !== undefined) row.isRecurring = Boolean(row.isRecurring);
+          if(row.isTaskLinked !== undefined) row.isTaskLinked = Boolean(row.isTaskLinked);
+          return row;
+      });
 
       return {
         statusCode: 200,
@@ -72,11 +78,8 @@ export const handler = async (event: any, context: any) => {
     }
 
     // POST: Overwrite all (Synchronization Mode)
-    // To replicate the behavior of the previous "Save All" logic with a relational DB:
-    // We ideally should UPSERT or DIFF, but for simplicity of this architecture we might:
-    // 1. Delete all records (or those belonging to user if we had RLS user logic separate from simple API key)
-    // 2. Insert new records
-    // Warning: This is destructive. Ensure your Supabase RLS policies are set correctly if multiple users exist.
+    // PlanetScale doesn't support massive single transactions in HTTP serverless mode easily,
+    // but for personal use, we can DELETE then INSERT.
     if (event.httpMethod === 'POST') {
       const body = JSON.parse(event.body || '[]');
       
@@ -84,22 +87,34 @@ export const handler = async (event: any, context: any) => {
         return { statusCode: 400, headers, body: JSON.stringify({ error: 'Body must be an array' }) };
       }
 
-      // Step 1: Delete all records in the table (Filtering by ID not null effectively selects all)
-      // Note: In a real multi-tenant app, this would need a user_id filter.
-      // Since we are using basic 'anon' key with likely one global state for this personal app:
-      const { error: deleteError } = await supabase.from(type).delete().neq('id', 'placeholder_impossible_id');
-      
-      if (deleteError) {
-         // Some RLS policies prevent deleting everything without a filter. 
-         // Fallback: Delete using a condition that is always true if possible, or iterate.
-         // For Personal LifeOS, we assume policies allow Delete.
-         console.warn("Delete error (might be RLS):", deleteError);
-      }
+      // Step 1: Delete all records
+      await conn.execute(`DELETE FROM ${type}`);
 
-      // Step 2: Insert new data
+      // Step 2: Insert new data (Batch Insert)
       if (body.length > 0) {
-        const { error: insertError } = await supabase.from(type).insert(body);
-        if (insertError) throw insertError;
+        // Construct keys and placeholders
+        const keys = Object.keys(body[0]);
+        const columns = keys.join(', ');
+        
+        // PlanetScale driver supports '?' replacement.
+        // We will construct: INSERT INTO type (col1, col2) VALUES (?, ?), (?, ?)
+        
+        const placeholders = `(${keys.map(() => '?').join(', ')})`;
+        const allPlaceholders = body.map(() => placeholders).join(', ');
+        const query = `INSERT INTO ${type} (${columns}) VALUES ${allPlaceholders}`;
+        
+        // Flatten values array
+        const values: any[] = [];
+        body.forEach((item: any) => {
+            keys.forEach(key => {
+                let val = item[key];
+                // Convert boolean true/false to 1/0 for MySQL
+                if (typeof val === 'boolean') val = val ? 1 : 0;
+                values.push(val);
+            });
+        });
+
+        await conn.execute(query, values);
       }
 
       return {
@@ -112,7 +127,7 @@ export const handler = async (event: any, context: any) => {
     return { statusCode: 405, headers, body: 'Method not allowed' };
 
   } catch (error: any) {
-    console.error('Supabase Error:', error);
+    console.error('PlanetScale Error:', error);
     return {
       statusCode: 500,
       headers,

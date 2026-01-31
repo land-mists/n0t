@@ -61,6 +61,7 @@ export interface AppSettings {
   weatherLocation: string;
   notificationsEnabled?: boolean; // New setting
   notificationTiming?: 'same-day' | '24h' | '48h'; // Configurable timing
-  supabaseUrl?: string; // Supabase Project URL
-  supabaseKey?: string; // Supabase Anon Key
+  psHost?: string;      // PlanetScale Host (aws.connect.psdb.cloud)
+  psUsername?: string;  // PlanetScale Username
+  psPassword?: string;  // PlanetScale Password
 }

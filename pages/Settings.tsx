@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AppSettings, SyncStatus } from '../types';
 import { notificationService } from '../services/notificationService';
 import { storageService } from '../services/storageService';
-import { Save, Key, CheckCircle2, AlertTriangle, RefreshCcw, Settings, Bell, BellRing, Clock, ShieldAlert, Database, Eye, EyeOff, Link, Fingerprint, Smartphone, Copy, ArrowDownCircle, Check } from 'lucide-react';
+import { Save, Key, CheckCircle2, AlertTriangle, RefreshCcw, Settings, Bell, BellRing, Clock, ShieldAlert, Database, Eye, EyeOff, Link, Fingerprint, Smartphone, Copy, ArrowDownCircle, Check, Server } from 'lucide-react';
 
 interface SettingsProps {
   syncStatus: SyncStatus;
@@ -16,8 +16,9 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
     weatherLocation: 'Skierniewice, PL',
     notificationsEnabled: false,
     notificationTiming: '24h',
-    supabaseUrl: '',
-    supabaseKey: ''
+    psHost: '',
+    psUsername: '',
+    psPassword: ''
   });
   
   const [originalConfig, setOriginalConfig] = useState<string>('');
@@ -44,8 +45,9 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
             notificationsEnabled: parsed.notificationsEnabled === true,
             notificationTiming: parsed.notificationTiming || '24h',
             weatherLocation: parsed.weatherLocation || 'Skierniewice, PL',
-            supabaseUrl: parsed.supabaseUrl || '',
-            supabaseKey: parsed.supabaseKey || ''
+            psHost: parsed.psHost || '',
+            psUsername: parsed.psUsername || '',
+            psPassword: parsed.psPassword || ''
         };
         setConfig(loadedConfig);
         setOriginalConfig(JSON.stringify(loadedConfig));
@@ -247,18 +249,18 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
 
         {/* Cloud Database Config */}
         <div className="glass-panel rounded-2xl p-8 relative overflow-hidden group">
-           <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-bl-full pointer-events-none transition-transform group-hover:scale-105"></div>
+           <div className="absolute top-0 right-0 w-64 h-64 bg-slate-500/5 rounded-bl-full pointer-events-none transition-transform group-hover:scale-105"></div>
            
            <div className="flex flex-col gap-6 relative z-10">
                <div className="flex items-start gap-4">
-                  <div className="p-3 bg-emerald-900/20 rounded-xl text-emerald-400 h-fit border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                  <div className="p-3 bg-slate-800 rounded-xl text-white h-fit border border-white/10 shadow-[0_0_15px_rgba(255,255,255,0.05)]">
                     <Database size={24} />
                   </div>
                   <div className="flex-1">
                     <div className="flex justify-between items-start">
                         <div>
-                            <h3 className="text-xl font-bold text-white">Supabase (PostgreSQL)</h3>
-                            <p className="text-sm text-slate-400 mt-1">Skonfiguruj połączenie z chmurą Supabase.</p>
+                            <h3 className="text-xl font-bold text-white">PlanetScale (MySQL)</h3>
+                            <p className="text-sm text-slate-400 mt-1">Skonfiguruj połączenie z bazą danych PlanetScale.</p>
                         </div>
                         <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
                             dbConnectionCheck === 'success' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
@@ -276,46 +278,61 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
                     <div className="mt-6 space-y-4">
                         <div>
                             <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2">
-                                <Link size={12} /> Project URL
+                                <Server size={12} /> Host
                             </label>
                             <input 
                                 type="text"
-                                value={config.supabaseUrl}
-                                onChange={(e) => setConfig({...config, supabaseUrl: e.target.value})}
-                                placeholder="https://xyz.supabase.co"
-                                className="w-full pl-4 pr-4 py-3 rounded-xl bg-black/40 border border-white/10 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 outline-none text-white font-mono text-sm transition-all shadow-inner"
+                                value={config.psHost}
+                                onChange={(e) => setConfig({...config, psHost: e.target.value})}
+                                placeholder="aws.connect.psdb.cloud"
+                                className="w-full pl-4 pr-4 py-3 rounded-xl bg-black/40 border border-white/10 focus:border-white/40 focus:ring-1 focus:ring-white/20 outline-none text-white font-mono text-sm transition-all shadow-inner"
                             />
                         </div>
 
-                        <div>
-                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2">
-                                <Key size={12} /> Anon / Public Key
-                            </label>
-                            <div className="relative">
+                         <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2">
+                                    <Fingerprint size={12} /> Username
+                                </label>
                                 <input 
-                                    type={showKey ? "text" : "password"}
-                                    value={config.supabaseKey}
-                                    onChange={(e) => setConfig({...config, supabaseKey: e.target.value})}
-                                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                                    className="w-full pl-4 pr-12 py-3 rounded-xl bg-black/40 border border-white/10 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 outline-none text-white font-mono text-sm transition-all shadow-inner"
+                                    type="text"
+                                    value={config.psUsername}
+                                    onChange={(e) => setConfig({...config, psUsername: e.target.value})}
+                                    placeholder="username"
+                                    className="w-full pl-4 pr-4 py-3 rounded-xl bg-black/40 border border-white/10 focus:border-white/40 focus:ring-1 focus:ring-white/20 outline-none text-white font-mono text-sm transition-all shadow-inner"
                                 />
-                                <button 
-                                    onClick={() => setShowKey(!showKey)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
-                                >
-                                    {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
-                                </button>
                             </div>
-                        </div>
+
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2">
+                                    <Key size={12} /> Password
+                                </label>
+                                <div className="relative">
+                                    <input 
+                                        type={showKey ? "text" : "password"}
+                                        value={config.psPassword}
+                                        onChange={(e) => setConfig({...config, psPassword: e.target.value})}
+                                        placeholder="pscale_pw_..."
+                                        className="w-full pl-4 pr-12 py-3 rounded-xl bg-black/40 border border-white/10 focus:border-white/40 focus:ring-1 focus:ring-white/20 outline-none text-white font-mono text-sm transition-all shadow-inner"
+                                    />
+                                    <button 
+                                        onClick={() => setShowKey(!showKey)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+                                    >
+                                        {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
+                            </div>
+                         </div>
 
                         <p className="text-[10px] text-slate-600 mt-2">
-                            Znajdź te dane w ustawieniach projektu Supabase (API Settings).
+                            Pobierz te dane z panelu PlanetScale (przycisk "Connect" -> "Connect with Node.js").
                         </p>
                         
                         <div className="mt-4 flex justify-end">
                              <button 
                                 onClick={testDbConnection}
-                                className="px-5 py-2 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2"
+                                className="px-5 py-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2"
                              >
                                  <RefreshCcw size={14} className={dbConnectionCheck === 'checking' ? 'animate-spin' : ''} />
                                  Testuj Połączenie

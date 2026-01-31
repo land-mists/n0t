@@ -31,7 +31,7 @@ export default function App() {
   // Connection Status & Modal
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('disconnected');
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-  const [dbDetails, setDbDetails] = useState<{ url: string; project: string } | null>(null);
+  const [dbDetails, setDbDetails] = useState<{ host: string; user: string } | null>(null);
 
   // Initialization
   useEffect(() => {
@@ -68,19 +68,13 @@ export default function App() {
             });
         }
         
-        // Parse DB details for status modal (Supabase)
-        if (parsed.supabaseUrl && parsed.supabaseKey) {
-             try {
-                 const url = new URL(parsed.supabaseUrl);
-                 const projectRef = url.hostname.split('.')[0];
-                 setDbDetails({
-                     url: parsed.supabaseUrl,
-                     project: projectRef
-                 });
-                 setSyncStatus('connected');
-             } catch (e) {
-                 console.error("Failed to parse Supabase URL", e);
-             }
+        // Parse DB details for status modal (PlanetScale)
+        if (parsed.psHost && parsed.psUsername) {
+             setDbDetails({
+                 host: parsed.psHost,
+                 user: parsed.psUsername
+             });
+             setSyncStatus('connected');
         }
       }
     };
@@ -236,7 +230,7 @@ export default function App() {
       },
       connected: { 
         icon: <Cloud size={14} />, 
-        text: 'SUPABASE', 
+        text: 'PLANETSCALE', 
         className: 'text-emerald-400 bg-emerald-900/20 border-emerald-500/20 shadow-[0_0_10px_rgba(52,211,153,0.2)] hover:bg-emerald-900/40 cursor-pointer' 
       },
       syncing: { 
@@ -427,7 +421,7 @@ export default function App() {
       <Modal isOpen={isStatusModalOpen} onClose={() => setIsStatusModalOpen(false)} title="Szczegóły Połączenia">
          <div className="space-y-6">
             <div className="bg-black/40 p-6 rounded-2xl border border-white/10 relative overflow-hidden group">
-                 <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-bl-full pointer-events-none transition-transform group-hover:scale-110"></div>
+                 <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-bl-full pointer-events-none transition-transform group-hover:scale-110"></div>
                  
                  <div className="flex items-center gap-4 mb-6">
                     <div className={`p-4 rounded-full border ${syncStatus === 'connected' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-slate-800/50 border-white/10 text-slate-500'}`}>
@@ -435,7 +429,7 @@ export default function App() {
                     </div>
                     <div>
                         <h3 className="text-xl font-bold text-white tracking-tight">Status: {syncStatus === 'connected' ? 'POŁĄCZONO' : 'ROZŁĄCZONO'}</h3>
-                        <p className="text-sm text-slate-400">{syncStatus === 'connected' ? 'Synchronizacja z Supabase (Postgres) aktywna.' : 'Działanie w trybie lokalnym.'}</p>
+                        <p className="text-sm text-slate-400">{syncStatus === 'connected' ? 'Synchronizacja z PlanetScale (MySQL) aktywna.' : 'Działanie w trybie lokalnym.'}</p>
                     </div>
                  </div>
 
@@ -446,7 +440,7 @@ export default function App() {
                                  <Database size={18} className="text-cyan-400" />
                                  <div className="flex flex-col">
                                      <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Typ Bazy</span>
-                                     <span className="text-sm text-white font-mono">PostgreSQL (Supabase)</span>
+                                     <span className="text-sm text-white font-mono">MySQL (Vitess)</span>
                                  </div>
                              </div>
                              <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_5px_lime]"></div>
@@ -454,10 +448,10 @@ export default function App() {
                          
                          <div className="p-4 bg-white/[0.03] rounded-xl border border-white/5 flex items-center justify-between group/item hover:border-blue-500/30 transition-colors">
                              <div className="flex items-center gap-3">
-                                 <Link size={18} className="text-blue-400" />
+                                 <Server size={18} className="text-blue-400" />
                                  <div className="flex flex-col">
-                                     <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Project URL</span>
-                                     <span className="text-sm text-white font-mono truncate max-w-[200px]" title={dbDetails.url}>{dbDetails.url}</span>
+                                     <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Host</span>
+                                     <span className="text-sm text-white font-mono truncate max-w-[200px]" title={dbDetails.host}>{dbDetails.host}</span>
                                  </div>
                              </div>
                              <Wifi size={14} className="text-blue-500" />
@@ -467,8 +461,8 @@ export default function App() {
                              <div className="flex items-center gap-3">
                                  <User size={18} className="text-purple-400" />
                                  <div className="flex flex-col">
-                                     <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Project ID</span>
-                                     <span className="text-sm text-white font-mono">{dbDetails.project}</span>
+                                     <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Username</span>
+                                     <span className="text-sm text-white font-mono">{dbDetails.user}</span>
                                  </div>
                              </div>
                              <ShieldCheck size={14} className="text-purple-500" />
@@ -477,7 +471,7 @@ export default function App() {
                  ) : (
                      <div className="text-center py-6 border-2 border-dashed border-white/10 rounded-xl bg-white/[0.01]">
                          <Database size={24} className="mx-auto text-slate-600 mb-2 opacity-50" />
-                         <p className="text-sm text-slate-500">Brak skonfigurowanego połączenia Supabase.</p>
+                         <p className="text-sm text-slate-500">Brak skonfigurowanego połączenia PlanetScale.</p>
                          <button onClick={() => { setIsStatusModalOpen(false); setCurrentPage(PAGES.SETTINGS); }} className="mt-3 text-cyan-400 text-xs font-bold hover:underline">
                              Przejdź do Ustawień
                          </button>
