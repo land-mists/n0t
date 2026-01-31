@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AppSettings, SyncStatus } from '../types';
 import { notificationService } from '../services/notificationService';
 import { storageService } from '../services/storageService';
-import { Save, Key, CheckCircle2, AlertTriangle, RefreshCcw, Settings, Bell, BellRing, Clock, ShieldAlert, Database, Eye, EyeOff, Link, Fingerprint } from 'lucide-react';
+import { Save, Key, CheckCircle2, AlertTriangle, RefreshCcw, Settings, Bell, BellRing, Clock, ShieldAlert, Database, Eye, EyeOff, Link, Fingerprint, Smartphone, Copy, ArrowDownCircle, Check } from 'lucide-react';
 
 interface SettingsProps {
   syncStatus: SyncStatus;
@@ -25,6 +25,11 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
   const [permissionState, setPermissionState] = useState(notificationService.getPermissionState());
   const [showKey, setShowKey] = useState(false);
   const [dbConnectionCheck, setDbConnectionCheck] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
+  
+  // Mobile Sync State
+  const [transferToken, setTransferToken] = useState('');
+  const [importError, setImportError] = useState('');
+  const [tokenCopied, setTokenCopied] = useState(false);
 
   const hasApiKey = !!process.env.API_KEY;
   const hasUnsavedChanges = JSON.stringify(config) !== originalConfig;
@@ -139,6 +144,43 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
     }
   };
 
+  // --- MOBILE SYNC LOGIC ---
+
+  const generateTransferToken = () => {
+    try {
+        const payload = JSON.stringify(config);
+        // Create base64 string
+        const token = btoa(payload);
+        navigator.clipboard.writeText(token);
+        setTokenCopied(true);
+        setTimeout(() => setTokenCopied(false), 3000);
+    } catch (e) {
+        alert("Błąd generowania tokenu.");
+    }
+  };
+
+  const handleImportToken = () => {
+      if (!transferToken) return;
+      setImportError('');
+      
+      try {
+          // Decode
+          const decoded = atob(transferToken);
+          const parsed = JSON.parse(decoded);
+          
+          // Basic validation
+          if (typeof parsed === 'object') {
+              setConfig(prev => ({ ...prev, ...parsed }));
+              setTransferToken('');
+              alert("Konfiguracja wczytana pomyślnie! Kliknij 'Zapisz Zmiany' na dole.");
+          } else {
+              setImportError("Nieprawidłowy format tokenu.");
+          }
+      } catch (e) {
+          setImportError("Nieprawidłowy token (Base64 Error).");
+      }
+  };
+
   return (
     <div className="space-y-8 max-w-4xl mx-auto pb-10 animate-fade-in">
       <div>
@@ -149,6 +191,59 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
+
+        {/* --- MOBILE SYNC SECTION (NEW) --- */}
+        <div className="glass-panel rounded-2xl p-6 relative overflow-hidden bg-gradient-to-r from-blue-900/20 to-cyan-900/20 border-cyan-500/20">
+            <div className="flex flex-col md:flex-row gap-6 items-start md:items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <div className="p-3 bg-cyan-500/10 rounded-xl text-cyan-400 border border-cyan-500/30">
+                        <Smartphone size={24} />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold text-white">Szybka Konfiguracja (Mobile)</h3>
+                        <p className="text-xs text-slate-400 mt-1 max-w-md">
+                            Zamiast wpisywać klucze ręcznie na telefonie, wygeneruj token na komputerze i wklej go tutaj.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                    {/* Export Button */}
+                    <button 
+                        onClick={generateTransferToken}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-bold uppercase tracking-wider text-slate-300 transition-all hover:text-white"
+                        title="Skopiuj wszystkie obecne ustawienia do schowka"
+                    >
+                        {tokenCopied ? <Check size={16} className="text-emerald-500" /> : <Copy size={16} />}
+                        {tokenCopied ? 'Skopiowano!' : 'Kopiuj Ustawienia'}
+                    </button>
+                </div>
+            </div>
+
+            {/* Import Input */}
+            <div className="mt-6 pt-4 border-t border-white/5">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-2">
+                    <ArrowDownCircle size={12} /> Wklej Token Tutaj
+                </label>
+                <div className="flex gap-2">
+                    <input 
+                        type="text" 
+                        value={transferToken}
+                        onChange={(e) => setTransferToken(e.target.value)}
+                        placeholder="Wklej długi ciąg znaków tutaj..."
+                        className="flex-1 px-4 py-2.5 rounded-xl bg-black/40 border border-white/10 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 outline-none text-white font-mono text-xs shadow-inner"
+                    />
+                    <button 
+                        onClick={handleImportToken}
+                        disabled={!transferToken}
+                        className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-cyan-900/20"
+                    >
+                        Wczytaj
+                    </button>
+                </div>
+                {importError && <p className="text-red-400 text-xs mt-2 font-mono">{importError}</p>}
+            </div>
+        </div>
 
         {/* Cloud Database Config */}
         <div className="glass-panel rounded-2xl p-8 relative overflow-hidden group">
