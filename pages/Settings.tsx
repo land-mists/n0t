@@ -326,7 +326,7 @@ const SettingsPage: React.FC<SettingsProps> = ({ syncStatus, setSyncStatus }) =>
                          </div>
 
                         <p className="text-[10px] text-slate-600 mt-2">
-                            Pobierz te dane z panelu PlanetScale (przycisk "Connect" -> "Connect with Node.js").
+                            Pobierz te dane z panelu PlanetScale (przycisk &quot;Connect&quot; &rarr; &quot;Connect with Node.js&quot;).
                         </p>
                         
                         <div className="mt-4 flex justify-end">
